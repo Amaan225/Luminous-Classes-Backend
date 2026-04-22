@@ -1,0 +1,125 @@
+const express = require('express');
+const mongoose = require('mongoose');
+const cors = require('cors');
+const Tutor = require('./models/tutor');
+
+const Job = require('./models/job');
+const Application = require('./models/application');
+require('dotenv').config();
+
+console.log("My DB Link is: ", process.env.MONGO_URI); // Add this temporarily
+const app = express();
+
+app.use(cors());
+app.use(express.json()); // This allows your server to understand JSON data
+
+// 1. Connect to MongoDB
+mongoose.connect(process.env.MONGO_URI)
+    .then(() => console.log("Connected to Luminous Database, Allah's blessings!"))
+    .catch((err) => console.log("Database connection error: ", err));
+
+// 2. Simple Route
+app.get('/', (req, res) => {
+    res.send('Luminous Backend is connected to the Database!');
+});
+
+
+// Route to create a new Tuition Job
+app.post('/api/jobs', async (req, res) => {
+    try {
+        const newJob = new Job(req.body); // Get the data from the request body
+        const savedJob = await newJob.save(); // Save it to MongoDB
+        res.status(201).json(savedJob); // Send back the saved job as confirmation
+    } catch (err) {
+        res.status(500).json({ message: "Error saving job", error: err });
+    }
+});
+
+// POST a new application
+app.post('/api/applications', async (req, res) => {
+  try {
+    const newApp = new Application(req.body);
+    const savedApp = await newApp.save();
+    res.status(201).json(savedApp);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to submit application" });
+  }
+});
+
+
+// Route to get all Tuition Jobs (for the Teachers to see)
+app.get('/api/jobs', async (req, res) => {
+    try {
+        const allJobs = await Job.find(); // This finds every job in the database
+        res.status(200).json(allJobs);
+    } catch (err) {
+        res.status(500).json({ message: "Error fetching jobs", error: err });
+    }
+});
+
+// ----------------------------------------------------
+// GET all applications (For the Admin)
+app.get('/api/applications', async (req, res) => {
+  try {
+    const apps = await Application.find();
+    res.json(apps);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch applications" });
+  }
+});
+
+// DELETE a job (For the Admin when a tutor is hired)
+app.delete('/api/jobs/:id', async (req, res) => {
+  try {
+    await Job.findByIdAndDelete(req.params.id);
+    res.json({ message: "Job deleted successfully" });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to delete job" });
+  }
+});
+
+
+
+// ----------------------------------------------------
+// TUTOR ROUTES
+// 1. Register a new tutor (Defaults to 'pending')
+app.post('/api/tutors', async (req, res) => {
+  try {
+    const newTutor = new Tutor(req.body);
+    const savedTutor = await newTutor.save();
+    res.status(201).json(savedTutor);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to register tutor. Email might already exist." });
+  }
+});
+
+// 2. Get all tutors (For your Admin Portal)
+app.get('/api/tutors', async (req, res) => {
+  try {
+    const tutors = await Tutor.find();
+    res.json(tutors);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch tutors" });
+  }
+});
+
+// 3. Approve a tutor (Changes status from pending to approved)
+app.patch('/api/tutors/:id/approve', async (req, res) => {
+  try {
+    const updatedTutor = await Tutor.findByIdAndUpdate(
+      req.params.id, 
+      { status: 'approved' }, 
+      { new: true }
+    );
+    res.json(updatedTutor);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to approve tutor" });
+  }
+});
+// ----------------------------------------------------
+// ----------------------------------------------------
+
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+});
