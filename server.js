@@ -23,6 +23,10 @@ app.get('/', (req, res) => {
     res.send('Luminous Backend is connected to the Database!');
 });
 
+// A simple health check route for the cron job to ping
+app.get('/api/ping', (req, res) => {
+  res.status(200).json({ message: "Luminous API is awake!" });
+});
 
 // Route to create a new Tuition Job
 app.post('/api/jobs', async (req, res) => {
