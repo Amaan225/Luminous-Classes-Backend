@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const Tutor = require('./models/tutor');
+const UnlockRequest = require('./models/UnlockRequest');
 
 const Job = require('./models/job');
 const Application = require('./models/application');
@@ -53,12 +54,20 @@ app.post('/api/applications', async (req, res) => {
 
 // Route to get all Tuition Jobs (for the Teachers to see)
 app.get('/api/jobs', async (req, res) => {
-    try {
-        const allJobs = await Job.find(); // This finds every job in the database
-        res.status(200).json(allJobs);
-    } catch (err) {
-        res.status(500).json({ message: "Error fetching jobs", error: err });
-    }
+  try {
+    const jobs = await Job.find().sort({ createdAt: -1 });
+    
+    // The Masking Pipeline: Hide the contact numbers
+    const securedJobs = jobs.map(job => {
+      const jobData = job.toObject();
+      jobData.contactNumber = "+91 XXXXX XXXXX"; // The vault is locked!
+      return jobData;
+    });
+
+    res.status(200).json(securedJobs);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch jobs" });
+  }
 });
 
 // ----------------------------------------------------
@@ -79,6 +88,25 @@ app.delete('/api/jobs/:id', async (req, res) => {
     res.json({ message: "Job deleted successfully" });
   } catch (error) {
     res.status(500).json({ error: "Failed to delete job" });
+  }
+});
+
+// --- UNLOCK PAYMENT ROUTE ---
+app.post('/api/unlocks', async (req, res) => {
+  try {
+    const { jobId, tutorPhone, transactionId } = req.body;
+    
+    const newRequest = new UnlockRequest({
+      jobId,
+      tutorPhone,
+      transactionId
+    });
+
+    await newRequest.save();
+    res.status(201).json({ message: "Payment submitted successfully. Waiting for admin approval." });
+  } catch (error) {
+    console.error("Unlock error:", error);
+    res.status(500).json({ error: "Failed to process unlock request" });
   }
 });
 
