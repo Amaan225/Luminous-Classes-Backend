@@ -110,6 +110,30 @@ app.post('/api/unlocks', async (req, res) => {
   }
 });
 
+// --- GET ALL UNLOCK REQUESTS (For Admin Dashboard) ---
+app.get('/api/unlocks', async (req, res) => {
+  try {
+    // .populate('jobId') pulls in the actual job details so you know what they paid for
+    const requests = await UnlockRequest.find().populate('jobId').sort({ createdAt: -1 });
+    res.status(200).json(requests);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch payment requests" });
+  }
+});
+
+// --- APPROVE A PAYMENT ---
+app.put('/api/unlocks/:id/approve', async (req, res) => {
+  try {
+    const request = await UnlockRequest.findByIdAndUpdate(
+      req.params.id, 
+      { status: 'Approved' }, 
+      { new: true }
+    );
+    res.status(200).json(request);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to approve payment" });
+  }
+});
 
 
 // ----------------------------------------------------
