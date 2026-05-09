@@ -135,7 +135,7 @@ app.post('/api/unlocks', async (req, res) => {
       jobId,
       tutorPhone,
       transactionId,
-      status: 'Auto-Delivered' // Since Razorpay verified it, we mark it delivered
+      status: 'Approved' // Since Razorpay verified it, we mark it delivered
     });
     await newRequest.save();
 
