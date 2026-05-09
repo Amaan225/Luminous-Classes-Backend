@@ -4,15 +4,47 @@ const cors = require('cors');
 const Tutor = require('./models/tutor');
 const UnlockRequest = require('./models/UnlockRequest');
 
+
 const Job = require('./models/job');
 const Application = require('./models/application');
 require('dotenv').config();
+const Razorpay = require('razorpay');
+
+// Initialize Razorpay securely
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID,       
+  key_secret: process.env.RAZORPAY_KEY_SECRET 
+});
+
+// --- GENERATE RAZORPAY ORDER ---
+app.post('/api/payment/create-order', async (req, res) => {
+  try {
+    const options = {
+      amount: 4900, // ₹49.00
+      currency: "INR",
+      receipt: `receipt_order_${Date.now()}`,
+    };
+
+    const order = await razorpay.orders.create(options);
+    
+    if (!order) {
+      return res.status(500).json({ error: "Failed to create order" });
+    }
+
+    res.json(order);
+  } catch (error) {
+    console.error("Razorpay Order Error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 console.log("My DB Link is: ", process.env.MONGO_URI); // Add this temporarily
 const app = express();
 
 app.use(cors());
 app.use(express.json()); // This allows your server to understand JSON data
+
+
 
 // 1. Connect to MongoDB
 mongoose.connect(process.env.MONGO_URI)
@@ -132,6 +164,28 @@ app.put('/api/unlocks/:id/approve', async (req, res) => {
     res.status(200).json(request);
   } catch (error) {
     res.status(500).json({ error: "Failed to approve payment" });
+  }
+});
+
+// --- GENERATE RAZORPAY ORDER ---
+app.post('/api/payment/create-order', async (req, res) => {
+  try {
+    const options = {
+      amount: 4900, // ₹49.00 = 4900 paise
+      currency: "INR",
+      receipt: `receipt_order_${Date.now()}`,
+    };
+
+    const order = await razorpay.orders.create(options);
+    
+    if (!order) {
+      return res.status(500).json({ error: "Failed to create order" });
+    }
+
+    res.json(order);
+  } catch (error) {
+    console.error("Razorpay Order Error:", error);
+    res.status(500).json({ error: error.message });
   }
 });
 
