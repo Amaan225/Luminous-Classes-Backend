@@ -1,90 +1,57 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
-const Tutor = require('./models/tutor');
-const UnlockRequest = require('./models/UnlockRequest');
-
-
-const Job = require('./models/job');
-const Application = require('./models/application');
 require('dotenv').config();
 const Razorpay = require('razorpay');
 
-// Initialize Razorpay securely
+// Models
+const Tutor = require('./models/tutor');
+const UnlockRequest = require('./models/UnlockRequest');
+const Job = require('./models/job');
+const Application = require('./models/application');
+
+// 1. App Creation
+const app = express();
+
+// 2. Middleware
+app.use(cors());
+app.use(express.json());
+
+// 3. Razorpay Initialization
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,       
   key_secret: process.env.RAZORPAY_KEY_SECRET 
 });
 
-// --- GENERATE RAZORPAY ORDER ---
-app.post('/api/payment/create-order', async (req, res) => {
-  try {
-    const options = {
-      amount: 4900, // ₹49.00
-      currency: "INR",
-      receipt: `receipt_order_${Date.now()}`,
-    };
-
-    const order = await razorpay.orders.create(options);
-    
-    if (!order) {
-      return res.status(500).json({ error: "Failed to create order" });
-    }
-
-    res.json(order);
-  } catch (error) {
-    console.error("Razorpay Order Error:", error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-console.log("My DB Link is: ", process.env.MONGO_URI); // Add this temporarily
-const app = express();
-
-app.use(cors());
-app.use(express.json()); // This allows your server to understand JSON data
-
-
-
-// 1. Connect to MongoDB
+// 4. Connect to MongoDB
 mongoose.connect(process.env.MONGO_URI)
-    .then(() => console.log("Connected to Luminous Database, Allah's blessings!"))
-    .catch((err) => console.log("Database connection error: ", err));
+  .then(() => console.log("Connected to Luminous Database, Allah's blessings!"))
+  .catch((err) => console.log("Database connection error: ", err));
 
-// 2. Simple Route
+// ==========================================
+//                 ROUTES
+// ==========================================
+
+// Simple Health Check
 app.get('/', (req, res) => {
-    res.send('Luminous Backend is connected to the Database!');
+  res.send('Luminous Backend is connected to the Database!');
 });
 
-// A simple health check route for the cron job to ping
 app.get('/api/ping', (req, res) => {
   res.status(200).json({ message: "Luminous API is awake!" });
 });
 
-// Route to create a new Tuition Job
+// --- JOBS ROUTES ---
 app.post('/api/jobs', async (req, res) => {
-    try {
-        const newJob = new Job(req.body); // Get the data from the request body
-        const savedJob = await newJob.save(); // Save it to MongoDB
-        res.status(201).json(savedJob); // Send back the saved job as confirmation
-    } catch (err) {
-        res.status(500).json({ message: "Error saving job", error: err });
-    }
-});
-
-// POST a new application
-app.post('/api/applications', async (req, res) => {
   try {
-    const newApp = new Application(req.body);
-    const savedApp = await newApp.save();
-    res.status(201).json(savedApp);
-  } catch (error) {
-    res.status(500).json({ error: "Failed to submit application" });
+    const newJob = new Job(req.body);
+    const savedJob = await newJob.save();
+    res.status(201).json(savedJob);
+  } catch (err) {
+    res.status(500).json({ message: "Error saving job", error: err });
   }
 });
 
-
-// Route to get all Tuition Jobs (for the Teachers to see)
 app.get('/api/jobs', async (req, res) => {
   try {
     const jobs = await Job.find().sort({ createdAt: -1 });
@@ -102,18 +69,6 @@ app.get('/api/jobs', async (req, res) => {
   }
 });
 
-// ----------------------------------------------------
-// GET all applications (For the Admin)
-app.get('/api/applications', async (req, res) => {
-  try {
-    const apps = await Application.find();
-    res.json(apps);
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch applications" });
-  }
-});
-
-// DELETE a job (For the Admin when a tutor is hired)
 app.delete('/api/jobs/:id', async (req, res) => {
   try {
     await Job.findByIdAndDelete(req.params.id);
@@ -123,51 +78,32 @@ app.delete('/api/jobs/:id', async (req, res) => {
   }
 });
 
-// --- UNLOCK PAYMENT ROUTE ---
-app.post('/api/unlocks', async (req, res) => {
+// --- APPLICATIONS ROUTE (Free Tier) ---
+app.post('/api/applications', async (req, res) => {
   try {
-    const { jobId, tutorPhone, transactionId } = req.body;
-    
-    const newRequest = new UnlockRequest({
-      jobId,
-      tutorPhone,
-      transactionId
-    });
-
-    await newRequest.save();
-    res.status(201).json({ message: "Payment submitted successfully. Waiting for admin approval." });
+    const newApp = new Application(req.body);
+    const savedApp = await newApp.save();
+    res.status(201).json(savedApp);
   } catch (error) {
-    console.error("Unlock error:", error);
-    res.status(500).json({ error: "Failed to process unlock request" });
+    res.status(500).json({ error: "Failed to submit application" });
   }
 });
 
-// --- GET ALL UNLOCK REQUESTS (For Admin Dashboard) ---
-app.get('/api/unlocks', async (req, res) => {
+app.get('/api/applications', async (req, res) => {
   try {
-    // .populate('jobId') pulls in the actual job details so you know what they paid for
-    const requests = await UnlockRequest.find().populate('jobId').sort({ createdAt: -1 });
-    res.status(200).json(requests);
+    const apps = await Application.find();
+    res.json(apps);
   } catch (error) {
-    res.status(500).json({ error: "Failed to fetch payment requests" });
+    res.status(500).json({ error: "Failed to fetch applications" });
   }
 });
 
-// --- APPROVE A PAYMENT ---
-app.put('/api/unlocks/:id/approve', async (req, res) => {
-  try {
-    const request = await UnlockRequest.findByIdAndUpdate(
-      req.params.id, 
-      { status: 'Approved' }, 
-      { new: true }
-    );
-    res.status(200).json(request);
-  } catch (error) {
-    res.status(500).json({ error: "Failed to approve payment" });
-  }
-});
 
-// --- GENERATE RAZORPAY ORDER ---
+// ==========================================
+//          THE PAYMENT ENGINE (RAZORPAY)
+// ==========================================
+
+// 1. Generate Razorpay Order
 app.post('/api/payment/create-order', async (req, res) => {
   try {
     const options = {
@@ -189,10 +125,66 @@ app.post('/api/payment/create-order', async (req, res) => {
   }
 });
 
+// 2. Fully Automated Instant Unlock Delivery
+app.post('/api/unlocks', async (req, res) => {
+  try {
+    const { jobId, tutorPhone, transactionId } = req.body;
+    
+    // 1. Save the transaction to the database
+    const newRequest = new UnlockRequest({
+      jobId,
+      tutorPhone,
+      transactionId,
+      status: 'Auto-Delivered' // Since Razorpay verified it, we mark it delivered
+    });
+    await newRequest.save();
 
-// ----------------------------------------------------
-// TUTOR ROUTES
-// 1. Register a new tutor (Defaults to 'pending')
+    // 2. Fetch the real job to get the parent's actual number
+    const jobDetails = await Job.findById(jobId);
+    if (!jobDetails) {
+      return res.status(404).json({ error: "Job not found" });
+    }
+
+    // 3. Send the real number securely back to the frontend!
+    res.status(200).json({ 
+      message: "Payment verified successfully.",
+      unlockedContact: jobDetails.contactNumber 
+    });
+
+  } catch (error) {
+    console.error("Unlock error:", error);
+    res.status(500).json({ error: "Failed to process unlock request" });
+  }
+});
+
+// 3. Get all transactions for Admin Dashboard
+app.get('/api/unlocks', async (req, res) => {
+  try {
+    const requests = await UnlockRequest.find().populate('jobId').sort({ createdAt: -1 });
+    res.status(200).json(requests);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch payment requests" });
+  }
+});
+
+app.put('/api/unlocks/:id/approve', async (req, res) => {
+  try {
+    const request = await UnlockRequest.findByIdAndUpdate(
+      req.params.id, 
+      { status: 'Approved' }, 
+      { new: true }
+    );
+    res.status(200).json(request);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to approve payment" });
+  }
+});
+
+
+// ==========================================
+//               TUTOR ROUTES
+// ==========================================
+
 app.post('/api/tutors', async (req, res) => {
   try {
     const newTutor = new Tutor(req.body);
@@ -203,7 +195,6 @@ app.post('/api/tutors', async (req, res) => {
   }
 });
 
-// 2. Get all tutors (For your Admin Portal)
 app.get('/api/tutors', async (req, res) => {
   try {
     const tutors = await Tutor.find();
@@ -213,7 +204,6 @@ app.get('/api/tutors', async (req, res) => {
   }
 });
 
-// 3. Approve a tutor (Changes status from pending to approved)
 app.patch('/api/tutors/:id/approve', async (req, res) => {
   try {
     const updatedTutor = await Tutor.findByIdAndUpdate(
@@ -226,10 +216,12 @@ app.patch('/api/tutors/:id/approve', async (req, res) => {
     res.status(500).json({ error: "Failed to approve tutor" });
   }
 });
-// ----------------------------------------------------
-// ----------------------------------------------------
+
+// ==========================================
+//               SERVER START
+// ==========================================
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
