@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const JobSchema = new mongoose.Schema({
+    displayId: { type: String },
     parentName: { type: String, required: true },
     subject: { type: String, required: true },
     grade: { type: String, required: true },

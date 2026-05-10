@@ -42,11 +42,18 @@ app.get('/api/ping', (req, res) => {
 });
 
 // --- JOBS ROUTES ---
+// --- CREATE A NEW JOB ---
 app.post('/api/jobs', async (req, res) => {
   try {
-    const newJob = new Job(req.body);
-    const savedJob = await newJob.save();
-    res.status(201).json(savedJob);
+    // 1. Generate a random 4-digit number (e.g., 4829)
+    const randomNum = Math.floor(1000 + Math.random() * 9000);
+    
+    // 2. Attach the custom ID to the incoming data before saving
+    req.body.displayId = `TK-${randomNum}`; 
+
+    const newJob = new Job(req.body); 
+    const savedJob = await newJob.save(); 
+    res.status(201).json(savedJob); 
   } catch (err) {
     res.status(500).json({ message: "Error saving job", error: err });
   }
