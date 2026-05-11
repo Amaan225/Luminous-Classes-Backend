@@ -59,20 +59,27 @@ app.post('/api/jobs', async (req, res) => {
   }
 });
 
+// --- GET ALL JOBS ---
 app.get('/api/jobs', async (req, res) => {
   try {
     const jobs = await Job.find().sort({ createdAt: -1 });
-    
-    // The Masking Pipeline: Hide the contact numbers
-    const securedJobs = jobs.map(job => {
-      const jobData = job.toObject();
-      jobData.contactNumber = "+91 XXXXX XXXXX"; // The vault is locked!
-      return jobData;
+
+    // 1. If the request has our secret admin key, send the REAL unmasked data
+    if (req.query.secret === 'amaan2026') {
+      return res.status(200).json(jobs);
+    }
+
+    // 2. Otherwise (for public tutors), mask the contact numbers
+    const maskedJobs = jobs.map(job => {
+      // Convert mongoose document to standard object so we can modify it
+      const jobObj = job.toObject ? job.toObject() : job; 
+      jobObj.contactNumber = "+91 XXXXX XXXXX";
+      return jobObj;
     });
 
-    res.status(200).json(securedJobs);
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch jobs" });
+    res.status(200).json(maskedJobs);
+  } catch (err) {
+    res.status(500).json({ message: "Error fetching jobs", error: err });
   }
 });
 
