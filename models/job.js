@@ -8,7 +8,22 @@ const JobSchema = new mongoose.Schema({
     location: { type: String, required: true }, // e.g., "Aliganj, Lucknow" or "Online"
     salary: { type: String, required: true },
     contactNumber: { type: String, required: true },
-    requirements: { type: String }, // Any extra details
+    requirements: { type: String }, // This acts as your "Parent Notes"
+    
+    // ==========================================
+    // --- NEW: THE TWO-TIER SYSTEM FIELDS ---
+    // ==========================================
+    leadType: { 
+        type: String, 
+        enum: ['premium', 'classic'], 
+        default: 'premium' // Magic Switch: Web forms default to 0% commission!
+    },
+    price: { 
+        type: Number, 
+        default: 49 // Locks in your universal flat unlock fee
+    },
+    // ==========================================
+
     createdAt: { type: Date, default: Date.now }
 });
 
