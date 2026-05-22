@@ -83,6 +83,31 @@ app.get('/api/jobs', async (req, res) => {
   }
 });
 
+// --- NEW: AMEND RECORD (PUT) ---
+app.put('/api/jobs/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updatedJob = await Job.findByIdAndUpdate(
+      id, 
+      req.body, 
+      { 
+        new: true, // Returns the fresh data back to the frontend
+        runValidators: true // Enforces Mongoose schema rules (like premium vs classic)
+      }
+    );
+
+    if (!updatedJob) {
+      return res.status(404).json({ error: 'Job not found in database.' });
+    }
+
+    res.json(updatedJob);
+  } catch (err) {
+    console.error("Error updating job:", err);
+    res.status(400).json({ error: 'Failed to amend record.', details: err });
+  }
+});
+
+// --- DELETE JOB ---
 app.delete('/api/jobs/:id', async (req, res) => {
   try {
     await Job.findByIdAndDelete(req.params.id);
