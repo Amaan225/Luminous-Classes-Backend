@@ -1,6 +1,13 @@
 const mongoose = require('mongoose');
 
 const JobSchema = new mongoose.Schema({
+    // --- NEW: DYNAMIC TITLE FIELD ---
+    title: { 
+        type: String, 
+        default: 'STUDENT LEAD' 
+    },
+    // --------------------------------
+    
     displayId: { type: String },
     parentName: { type: String, required: true },
     subject: { type: String, required: true },
@@ -11,7 +18,7 @@ const JobSchema = new mongoose.Schema({
     requirements: { type: String }, // This acts as your "Parent Notes"
     
     // ==========================================
-    // --- NEW: THE TWO-TIER SYSTEM FIELDS ---
+    // --- THE TWO-TIER SYSTEM FIELDS ---
     // ==========================================
     leadType: { 
         type: String, 
