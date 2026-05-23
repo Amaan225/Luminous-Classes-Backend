@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 require('dotenv').config();
 const Razorpay = require('razorpay');
+const rateLimit = require('express-rate-limit');
 
 // Models
 const Tutor = require('./models/tutor');
@@ -29,6 +30,19 @@ mongoose.connect(process.env.MONGO_URI)
   .catch((err) => console.log("Database connection error: ", err));
 
 // ==========================================
+//          SECURITY & RATE LIMITING
+// ==========================================
+const jobPostLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour window
+  max: 3, // Limit each IP to 3 requests per hour
+  message: { 
+    message: "You have posted the maximum number of requirements allowed. To prevent spam, please wait an hour or contact support." 
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// ==========================================
 //                 ROUTES
 // ==========================================
 
@@ -42,8 +56,8 @@ app.get('/api/ping', (req, res) => {
 });
 
 // --- JOBS ROUTES ---
-// --- CREATE A NEW JOB ---
-app.post('/api/jobs', async (req, res) => {
+// --- CREATE A NEW JOB (NOW PROTECTED BY LIMITER) ---
+app.post('/api/jobs', jobPostLimiter, async (req, res) => {
   try {
     // 1. Generate a random 4-digit number (e.g., 4829)
     const randomNum = Math.floor(1000 + Math.random() * 9000);
