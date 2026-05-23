@@ -59,18 +59,25 @@ app.post('/api/jobs', async (req, res) => {
   }
 });
 
-// --- GET ALL JOBS ---
+// --- GET ALL JOBS (UPDATED WITH QUARANTINE LOGIC) ---
 app.get('/api/jobs', async (req, res) => {
   try {
-    const jobs = await Job.find().sort({ createdAt: -1 });
-
-    // 1. If the request has our secret admin key, send the REAL unmasked data
+    // 1. If the request has our secret admin key, send ALL unmasked data (Pending + Approved)
     if (req.query.secret === 'amaan2026') {
-      return res.status(200).json(jobs);
+      const allJobs = await Job.find().sort({ createdAt: -1 });
+      return res.status(200).json(allJobs);
     }
 
-    // 2. Otherwise (for public tutors), mask the contact numbers
-    const maskedJobs = jobs.map(job => {
+    // 2. Otherwise (for public tutors), ONLY fetch jobs that are approved (or legacy jobs without a status)
+    const approvedJobs = await Job.find({ 
+      $or: [
+        { status: 'approved' }, 
+        { status: { $exists: false } } 
+      ] 
+    }).sort({ createdAt: -1 });
+
+    // 3. Mask the contact numbers for the public board
+    const maskedJobs = approvedJobs.map(job => {
       // Convert mongoose document to standard object so we can modify it
       const jobObj = job.toObject ? job.toObject() : job; 
       jobObj.contactNumber = "+91 XXXXX XXXXX";
