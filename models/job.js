@@ -1,7 +1,17 @@
 const mongoose = require('mongoose');
 
 const JobSchema = new mongoose.Schema({
-    // --- NEW: DYNAMIC TITLE FIELD ---
+    // ==========================================
+    // --- NEW: THE GATEKEEPER STATUS ---
+    // ==========================================
+    status: {
+        type: String,
+        enum: ['pending', 'approved'],
+        default: 'pending' // ALL public submissions default to quarantine
+    },
+    // ==========================================
+
+    // --- DYNAMIC TITLE FIELD ---
     title: { 
         type: String, 
         default: 'STUDENT LEAD' 
