@@ -40,6 +40,10 @@ const jobPostLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  // --- NEW: VIP PASS FOR ADMIN ---
+  skip: (req, res) => {
+    return req.query.secret === 'amaan2026'; // If it's you, bypass the limit!
+  }
 });
 
 // ==========================================
@@ -56,7 +60,7 @@ app.get('/api/ping', (req, res) => {
 });
 
 // --- JOBS ROUTES ---
-// --- CREATE A NEW JOB (NOW PROTECTED BY LIMITER) ---
+// --- CREATE A NEW JOB (NOW PROTECTED BY LIMITER & VIP PASS) ---
 app.post('/api/jobs', jobPostLimiter, async (req, res) => {
   try {
     // 1. Generate a random 4-digit number (e.g., 4829)
@@ -64,6 +68,13 @@ app.post('/api/jobs', jobPostLimiter, async (req, res) => {
     
     // 2. Attach the custom ID to the incoming data before saving
     req.body.displayId = `TK-${randomNum}`; 
+
+    // --- NEW: STRICT SECURITY OVERRIDE ---
+    // If a bot tries to sneak in an "approved" status, FORCE them into pending.
+    // Only you (with the secret key) are allowed to inject an 'approved' lead directly.
+    if (req.query.secret !== 'amaan2026') {
+      req.body.status = 'pending';
+    }
 
     const newJob = new Job(req.body); 
     const savedJob = await newJob.save(); 
