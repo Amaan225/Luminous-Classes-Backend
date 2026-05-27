@@ -98,6 +98,48 @@ app.delete('/api/jobs/:id', async (req, res) => {
   }
 });
 
+
+// ==========================================
+//   SMART DATA MIGRATION ROUTE
+// ==========================================
+app.get('/api/fix-salaries', async (req, res) => {
+  try {
+    // 1. We bypass Mongoose and talk directly to the raw MongoDB collection
+    // This prevents Mongoose from crashing when it sees an old String
+    const collection = mongoose.connection.collection('jobs');
+    
+    // 2. Fetch all raw jobs
+    const rawJobs = await collection.find({}).toArray();
+    let fixedCount = 0;
+
+    // 3. Loop through them and convert safely
+    for (let job of rawJobs) {
+      if (job.salary && typeof job.salary === 'string') {
+        // This regex trick strips out any letters/symbols and keeps only the numbers
+        // e.g., "Rs 4000/month" becomes 4000
+        const pureNumber = parseInt(job.salary.replace(/\D/g, ''), 10);
+        
+        if (!isNaN(pureNumber)) {
+          // Update the specific job with the new strict Number format
+          await collection.updateOne(
+            { _id: job._id }, 
+            { $set: { salary: pureNumber } }
+          );
+          fixedCount++;
+        }
+      }
+    }
+    
+    res.status(200).json({ 
+      message: "Smart Migration Successful! No data lost.",
+      originalSalariesRescued: fixedCount
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Migration failed", error: error.message });
+  }
+});
+
 // --- RAZORPAY PAYMENT ENGINE ---
 app.post('/api/payment/create-order', async (req, res) => {
   try {
