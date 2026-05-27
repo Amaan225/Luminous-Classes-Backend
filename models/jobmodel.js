@@ -22,60 +22,54 @@ const jobSchema = new mongoose.Schema({
     type: String, 
     required: true, 
     trim: true 
-    // NO enum here, so custom grades typed via "Other" are accepted
   },
   city: { 
     type: String, 
     required: true, 
     trim: true 
-    // NO enum here, so custom cities typed via "Other" are accepted
   },
   location: { 
     type: String, 
     required: true, 
     trim: true 
-    // NO enum here, so custom areas typed via "Other" are accepted
   },
   salary: { 
     type: Number, 
     required: true,
-    min: [0, 'Salary cannot be negative'] // Prevents parents from typing negative budgets
+    min: [0, 'Salary cannot be negative']
   },
   requirements: { 
     type: String, 
     trim: true 
   },
   
-  // --- INTERNAL PLATFORM DATA (Not set by the parent) ---
+  // --- INTERNAL PLATFORM DATA ---
   leadType: {
     type: String,
     enum: ['premium', 'classic'],
-    default: 'premium' // Parent posts are always premium (0% commission)
+    default: 'premium'
   },
   status: {
     type: String,
     enum: ['pending', 'approved', 'rejected'],
-    default: 'pending' // Keeps spam off the board until you approve it in the admin panel
+    default: 'pending'
   },
   price: { 
     type: Number, 
-    default: 49 // Your standard unlock fee
+    default: 49 
   },
   displayId: { 
-    type: String // e.g., 'TK-1024'
+    type: String,
+    // --- THE FIX: Auto-generates the ID instantly upon creation ---
+    default: function() {
+      const randomNum = Math.floor(1000 + Math.random() * 9000);
+      return `TK-${randomNum}`;
+    }
   }
 }, { 
-  timestamps: true // Automatically adds createdAt and updatedAt dates
+  timestamps: true 
 });
 
-// Pre-save hook to auto-generate the TK-XXXX display ID before saving to database
-jobSchema.pre('save', function(next) {
-  if (!this.displayId) {
-    // Generates a random 4 digit number for the ID
-    const randomNum = Math.floor(1000 + Math.random() * 9000);
-    this.displayId = `TK-${randomNum}`;
-  }
-  next();
-});
+// We completely removed the jobSchema.pre('save') hook to prevent the "next is not a function" error.
 
 module.exports = mongoose.model('Job', jobSchema);
