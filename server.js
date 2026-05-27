@@ -8,7 +8,7 @@ const rateLimit = require('express-rate-limit');
 // Models
 const Tutor = require('./models/tutor'); // Assuming you have this
 const UnlockRequest = require('./models/UnlockRequest'); // Assuming you have this
-const Job = require('./models/job');
+const Job = require('./models/jobmodel');
 const Application = require('./models/application'); // Assuming you have this
 
 const app = express();
