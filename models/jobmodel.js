@@ -2,6 +2,13 @@ const mongoose = require('mongoose');
 
 const jobSchema = new mongoose.Schema({
   // --- PARENT INPUT DATA ---
+  
+  // THE FIX: Added the title field to the schema
+  title: { 
+    type: String, 
+    trim: true 
+  },
+  
   parentName: { 
     type: String, 
     required: true, 
@@ -60,7 +67,7 @@ const jobSchema = new mongoose.Schema({
   },
   displayId: { 
     type: String,
-    // --- THE FIX: Auto-generates the ID instantly upon creation ---
+    // --- Auto-generates the ID instantly upon creation ---
     default: function() {
       const randomNum = Math.floor(1000 + Math.random() * 9000);
       return `TK-${randomNum}`;
@@ -69,7 +76,5 @@ const jobSchema = new mongoose.Schema({
 }, { 
   timestamps: true 
 });
-
-// We completely removed the jobSchema.pre('save') hook to prevent the "next is not a function" error.
 
 module.exports = mongoose.model('Job', jobSchema);
