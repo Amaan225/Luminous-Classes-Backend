@@ -140,6 +140,53 @@ app.delete('/api/jobs/:id', async (req, res) => {
 //   }
 // });
 
+
+// ==========================================
+// TUTOR REGISTRATION & ADMIN ROUTES
+// ==========================================
+
+// 1. CATCH the data from the React Registration Form
+app.post('/api/tutors', async (req, res) => {
+  try {
+    const newTutor = new Tutor(req.body);
+    await newTutor.save();
+    res.status(201).json({ message: 'Tutor registered successfully!' });
+  } catch (error) {
+    console.error('Registration Error:', error);
+    // Error code 11000 means they tried to register an email or phone that already exists
+    if (error.code === 11000) {
+      return res.status(400).json({ error: 'This email or phone is already registered.' });
+    }
+    res.status(500).json({ error: 'Server error during registration.' });
+  }
+});
+
+// 2. SEND pending tutors to the Admin Dashboard
+app.get('/api/admin/tutors/pending', async (req, res) => {
+  try {
+    const pendingTutors = await Tutor.find({ status: 'pending' }).sort({ registeredAt: -1 });
+    res.json(pendingTutors);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch pending tutors' });
+  }
+});
+
+// 3. APPROVE or REJECT a tutor from the Admin Dashboard
+app.put('/api/admin/tutors/:id/status', async (req, res) => {
+  try {
+    const { status } = req.body; 
+    const updatedTutor = await Tutor.findByIdAndUpdate(
+      req.params.id, 
+      { status }, 
+      { new: true }
+    );
+    res.json(updatedTutor);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update tutor status' });
+  }
+});
+
+
 // --- RAZORPAY PAYMENT ENGINE ---
 app.post('/api/payment/create-order', async (req, res) => {
   try {
