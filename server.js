@@ -42,7 +42,7 @@ const jobPostLimiter = rateLimit({
 app.get('/', (req, res) => res.send('Luminous Backend is connected to the Database!'));
 app.get('/api/ping', (req, res) => res.status(200).json({ message: "Luminous API is awake!" }));
 
-// CREATE A NEW JOB
+// CREATE A NEW JOB & TRIGGER ALERTS
 app.post('/api/jobs', jobPostLimiter, async (req, res) => {
   try {
     if (req.query.secret !== 'amaan2026') {
@@ -50,6 +50,30 @@ app.post('/api/jobs', jobPostLimiter, async (req, res) => {
     }
     const newJob = new Job(req.body); 
     const savedJob = await newJob.save(); 
+
+    // ==========================================
+    // THE HYPER-LOCAL ALERT ENGINE
+    // ==========================================
+    if (savedJob.status === 'approved') {
+      // 1. Find all verified tutors in the exact same city and area
+      const matchingTutors = await Tutor.find({
+        status: 'approved',
+        city: { $regex: new RegExp(`^${savedJob.city}$`, 'i') }, // Case insensitive match
+        preferredArea: { $regex: new RegExp(`^${savedJob.location}$`, 'i') }
+      });
+
+      console.log(`Alert Engine: Found ${matchingTutors.length} tutors in ${savedJob.location}.`);
+
+      // 2. Loop through them and send alerts
+      matchingTutors.forEach(tutor => {
+        const message = `🚨 *Tutor49 Alert!* 🚨\nA new ₹${savedJob.salary} tuition requirement was just posted in your area: *${savedJob.location}*.\n\nSubject: ${savedJob.subject}\n\nLog in now to unlock it before it's gone!`;
+        
+        // --- WHATSAPP API LOGIC GOES HERE ---
+        // Example: await sendWhatsAppMessage(tutor.phone, message);
+        console.log(`Sending WhatsApp to ${tutor.name} (${tutor.phone}): \n${message}`);
+      });
+    }
+
     res.status(201).json(savedJob); 
   } catch (err) {
     console.error("Database Error:", err);
