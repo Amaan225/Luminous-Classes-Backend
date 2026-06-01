@@ -3,12 +3,10 @@ const mongoose = require('mongoose');
 const jobSchema = new mongoose.Schema({
   // --- PARENT INPUT DATA ---
   
-  // THE FIX: Added the title field to the schema
   title: { 
     type: String, 
     trim: true 
   },
-  
   parentName: { 
     type: String, 
     required: true, 
@@ -53,8 +51,10 @@ const jobSchema = new mongoose.Schema({
   // --- INTERNAL PLATFORM DATA ---
   leadType: {
     type: String,
-    enum: ['premium', 'classic'],
-    default: 'premium'
+    // THE FIX: 'direct' added as an option and set as the new default. 
+    // 'premium' is kept strictly for backward compatibility with old data.
+    enum: ['direct', 'premium', 'classic'],
+    default: 'direct'
   },
   status: {
     type: String,
