@@ -6,10 +6,10 @@ const Razorpay = require('razorpay');
 const rateLimit = require('express-rate-limit');
 
 // Models
-const Tutor = require('./models/tutor'); // Assuming you have this
-const UnlockRequest = require('./models/UnlockRequest'); // Assuming you have this
+const Tutor = require('./models/tutor'); 
+const UnlockRequest = require('./models/UnlockRequest'); 
 const Job = require('./models/jobmodel');
-const Application = require('./models/application'); // Assuming you have this
+const Application = require('./models/application'); 
 
 const app = express();
 
@@ -55,21 +55,16 @@ app.post('/api/jobs', jobPostLimiter, async (req, res) => {
     // THE HYPER-LOCAL ALERT ENGINE
     // ==========================================
     if (savedJob.status === 'approved') {
-      // 1. Find all verified tutors in the exact same city and area
       const matchingTutors = await Tutor.find({
         status: 'approved',
-        city: { $regex: new RegExp(`^${savedJob.city}$`, 'i') }, // Case insensitive match
+        city: { $regex: new RegExp(`^${savedJob.city}$`, 'i') }, 
         preferredArea: { $regex: new RegExp(`^${savedJob.location}$`, 'i') }
       });
 
       console.log(`Alert Engine: Found ${matchingTutors.length} tutors in ${savedJob.location}.`);
 
-      // 2. Loop through them and send alerts
       matchingTutors.forEach(tutor => {
         const message = `🚨 *Tutor49 Alert!* 🚨\nA new ₹${savedJob.salary} tuition requirement was just posted in your area: *${savedJob.location}*.\n\nSubject: ${savedJob.subject}\n\nLog in now to unlock it before it's gone!`;
-        
-        // --- WHATSAPP API LOGIC GOES HERE ---
-        // Example: await sendWhatsAppMessage(tutor.phone, message);
         console.log(`Sending WhatsApp to ${tutor.name} (${tutor.phone}): \n${message}`);
       });
     }
@@ -81,16 +76,19 @@ app.post('/api/jobs', jobPostLimiter, async (req, res) => {
   }
 });
 
-// GET ALL JOBS
+// GET ALL JOBS (SORTED HIGHEST TO LOWEST SALARY)
 app.get('/api/jobs', async (req, res) => {
   try {
+    // If Admin panel requests it, sort by highest salary as well
     if (req.query.secret === 'amaan2026') {
-      const allJobs = await Job.find().sort({ createdAt: -1 });
+      const allJobs = await Job.find().sort({ salary: -1 });
       return res.status(200).json(allJobs);
     }
+
+    // Public view: Fetch approved jobs and sort by salary descending (-1)
     const approvedJobs = await Job.find({ 
       $or: [{ status: 'approved' }, { status: { $exists: false } }] 
-    }).sort({ createdAt: -1 });
+    }).sort({ salary: -1 });
 
     const maskedJobs = approvedJobs.map(job => {
       const jobObj = job.toObject ? job.toObject() : job; 
@@ -122,54 +120,10 @@ app.delete('/api/jobs/:id', async (req, res) => {
   }
 });
 
-
-// // ==========================================
-// //   SMART DATA MIGRATION ROUTE
-// // ==========================================
-// app.get('/api/fix-salaries', async (req, res) => {
-//   try {
-//     // 1. We bypass Mongoose and talk directly to the raw MongoDB collection
-//     // This prevents Mongoose from crashing when it sees an old String
-//     const collection = mongoose.connection.collection('jobs');
-    
-//     // 2. Fetch all raw jobs
-//     const rawJobs = await collection.find({}).toArray();
-//     let fixedCount = 0;
-
-//     // 3. Loop through them and convert safely
-//     for (let job of rawJobs) {
-//       if (job.salary && typeof job.salary === 'string') {
-//         // This regex trick strips out any letters/symbols and keeps only the numbers
-//         // e.g., "Rs 4000/month" becomes 4000
-//         const pureNumber = parseInt(job.salary.replace(/\D/g, ''), 10);
-        
-//         if (!isNaN(pureNumber)) {
-//           // Update the specific job with the new strict Number format
-//           await collection.updateOne(
-//             { _id: job._id }, 
-//             { $set: { salary: pureNumber } }
-//           );
-//           fixedCount++;
-//         }
-//       }
-//     }
-    
-//     res.status(200).json({ 
-//       message: "Smart Migration Successful! No data lost.",
-//       originalSalariesRescued: fixedCount
-//     });
-//   } catch (error) {
-//     console.error(error);
-//     res.status(500).json({ message: "Migration failed", error: error.message });
-//   }
-// });
-
-
 // ==========================================
 // TUTOR REGISTRATION & ADMIN ROUTES
 // ==========================================
 
-// 1. CATCH the data from the React Registration Form
 app.post('/api/tutors', async (req, res) => {
   try {
     const newTutor = new Tutor(req.body);
@@ -177,7 +131,6 @@ app.post('/api/tutors', async (req, res) => {
     res.status(201).json({ message: 'Tutor registered successfully!' });
   } catch (error) {
     console.error('Registration Error:', error);
-    // Error code 11000 means they tried to register an email or phone that already exists
     if (error.code === 11000) {
       return res.status(400).json({ error: 'This email or phone is already registered.' });
     }
@@ -185,7 +138,6 @@ app.post('/api/tutors', async (req, res) => {
   }
 });
 
-// 2. SEND pending tutors to the Admin Dashboard
 app.get('/api/admin/tutors/pending', async (req, res) => {
   try {
     const pendingTutors = await Tutor.find({ status: 'pending' }).sort({ registeredAt: -1 });
@@ -195,7 +147,6 @@ app.get('/api/admin/tutors/pending', async (req, res) => {
   }
 });
 
-// 3. APPROVE or REJECT a tutor from the Admin Dashboard
 app.put('/api/admin/tutors/:id/status', async (req, res) => {
   try {
     const { status } = req.body; 
@@ -209,7 +160,6 @@ app.put('/api/admin/tutors/:id/status', async (req, res) => {
     res.status(500).json({ error: 'Failed to update tutor status' });
   }
 });
-
 
 // --- RAZORPAY PAYMENT ENGINE ---
 app.post('/api/payment/create-order', async (req, res) => {
