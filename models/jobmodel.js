@@ -54,11 +54,11 @@ const jobSchema = new mongoose.Schema({
     // THE FIX: 'direct' added as an option and set as the new default. 
     // 'premium' is kept strictly for backward compatibility with old data.
     enum: ['direct', 'premium', 'classic'],
-    default: 'direct'
+    default: 'classic'
   },
   status: {
     type: String,
-    enum: ['pending', 'approved', 'rejected'],
+    enum: ['pending', 'approved', 'rejected', 'hidden'],
     default: 'pending'
   },
   price: { 
