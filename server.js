@@ -4,6 +4,7 @@ const cors = require('cors');
 require('dotenv').config();
 const Razorpay = require('razorpay');
 const rateLimit = require('express-rate-limit');
+const crypto = require('crypto'); // <-- Added for Razorpay signature verification
 
 // Models
 const Tutor = require('./models/tutor'); 
@@ -18,7 +19,7 @@ app.use(express.json());
 
 // Razorpay Initialization
 const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,       
+  key_id: process.env.RAZORPAY_KEY_ID,      
   key_secret: process.env.RAZORPAY_KEY_SECRET 
 });
 
@@ -87,7 +88,7 @@ app.get('/api/jobs', async (req, res) => {
 
     // Public view: Fetch approved jobs and sort by salary descending (-1)
     const approvedJobs = await Job.find({ 
-      $or: [{ status: 'approved' }, { status: { $exists: false } }] 
+      $or: [{ status: 'approved' }, { status: {$exists: false } }] 
     }).sort({ salary: -1 });
 
     const maskedJobs = approvedJobs.map(job => {
@@ -121,9 +122,10 @@ app.delete('/api/jobs/:id', async (req, res) => {
 });
 
 // ==========================================
-// TUTOR REGISTRATION & ADMIN ROUTES
+// TUTOR REGISTRATION & PAYMENT ROUTES
 // ==========================================
 
+// 1. Standard Fallback Registration (Unpaid / Legacy)
 app.post('/api/tutors', async (req, res) => {
   try {
     const newTutor = new Tutor(req.body);
@@ -138,9 +140,76 @@ app.post('/api/tutors', async (req, res) => {
   }
 });
 
+// 2. CREATE REGISTRATION ORDER (₹49)
+app.post('/api/create-registration-order', async (req, res) => {
+  try {
+    const options = {
+      amount: 49 * 100, // Amount in paise (49 INR = 4900 paise)
+      currency: "INR",
+      receipt: `reg_receipt_${Date.now()}`,
+    };
+    const order = await razorpay.orders.create(options);
+    if (!order) return res.status(500).json({ error: "Failed to create registration order" });
+    res.status(200).json({
+      orderId: order.id,
+      amount: order.amount,
+      currency: order.currency,
+      keyId: process.env.RAZORPAY_KEY_ID,
+    });
+  } catch (error) {
+    console.error('Razorpay registration order error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 3. VERIFY PAYMENT & REGISTER TUTOR (₹49 Flow)
+app.post('/api/tutors/verify-and-register', async (req, res) => {
+  try {
+    const { 
+      name, email, phone, collegeId, city, preferredArea, 
+      razorpayPaymentId, razorpayOrderId, razorpaySignature 
+    } = req.body;
+
+    // Verify Signature for Security
+    const body = razorpayOrderId + "|" + razorpayPaymentId;
+    const expectedSignature = crypto
+      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+      .update(body.toString())
+      .digest('hex');
+
+    if (expectedSignature !== razorpaySignature) {
+      return res.status(400).json({ success: false, message: 'Invalid payment signature! Security verification failed.' });
+    }
+
+    // Save Paid Tutor to MongoDB
+    const newTutor = new Tutor({
+      name,
+      email,
+      phone,
+      collegeId,
+      city,
+      preferredArea,
+      paymentId: razorpayPaymentId,
+      orderId: razorpayOrderId,
+      isPaid: true,
+      status: 'pending' // Goes to Admin Pending Tutors Queue
+    });
+
+    await newTutor.save();
+    res.status(201).json({ success: true, message: 'Tutor registered and payment verified successfully!' });
+
+  } catch (error) {
+    console.error('Tutor registration verification error:', error);
+    if (error.code === 11000) {
+      return res.status(400).json({ success: false, error: 'This email or phone is already registered.' });
+    }
+    res.status(500).json({ success: false, error: 'Server error during verification', details: error.message });
+  }
+});
+
 app.get('/api/admin/tutors/pending', async (req, res) => {
   try {
-    const pendingTutors = await Tutor.find({ status: 'pending' }).sort({ registeredAt: -1 });
+    const pendingTutors = await Tutor.find({ status: 'pending' }).sort({ createdAt: -1 });
     res.json(pendingTutors);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch pending tutors' });
@@ -161,7 +230,7 @@ app.put('/api/admin/tutors/:id/status', async (req, res) => {
   }
 });
 
-// --- RAZORPAY PAYMENT ENGINE ---
+// --- RAZORPAY PAYMENT ENGINE (LEAD UNLOCKS) ---
 app.post('/api/payment/create-order', async (req, res) => {
   try {
     const options = {
