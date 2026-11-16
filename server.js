@@ -7,36 +7,43 @@ const rateLimit = require('express-rate-limit');
 const crypto = require('crypto'); // <-- Added for Razorpay signature verification
 
 // Models
-const Tutor = require('./models/tutor'); 
-const UnlockRequest = require('./models/UnlockRequest'); 
+const Tutor = require('./models/tutor');
+const UnlockRequest = require('./models/UnlockRequest');
 const Job = require('./models/jobmodel');
-const Application = require('./models/application'); 
+const Application = require('./models/application');
+const { verifyLeadPayment } = require('./payment-verification');
 
+const { createAdminAuth } = require('./admin-auth');
 const app = express();
+app.set('trust proxy', 1);
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '100kb' }));
+const adminAuth = createAdminAuth();
+app.use(adminAuth.attach);
+app.post('/api/admin/login', adminAuth.loginLimiter, adminAuth.login);
+app.post('/api/admin/logout', adminAuth.requireAdmin, adminAuth.logout);
+app.use('/api/admin', adminAuth.requireAdmin);
+app.get('/api/admin/session', (req, res) => res.json({ expiresAt: req.adminSession.expiry }));
 
 // Razorpay Initialization
 const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,      
-  key_secret: process.env.RAZORPAY_KEY_SECRET 
+  key_id: process.env.RAZORPAY_KEY_ID,
+  key_secret: process.env.RAZORPAY_KEY_SECRET
 });
 
-mongoose.connect(process.env.MONGO_URI)
+if (require.main === module) mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("Connected to Luminous Database, Allah's blessings!"))
   .catch((err) => console.log("Database connection error: ", err));
 
 // --- SECURITY & RATE LIMITING ---
 const jobPostLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, 
-  max: 3, 
+  windowMs: 60 * 60 * 1000,
+  max: 3,
   message: { message: "You have posted the maximum number of requirements allowed. To prevent spam, please wait an hour or contact support." },
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req, res) => {
-    return req.query.secret === 'amaan2026';
-  }
+  skip: req => Boolean(req.adminSession)
 });
 
 // --- ROUTES ---
@@ -46,11 +53,11 @@ app.get('/api/ping', (req, res) => res.status(200).json({ message: "Luminous API
 // CREATE A NEW JOB & TRIGGER ALERTS
 app.post('/api/jobs', jobPostLimiter, async (req, res) => {
   try {
-    if (req.query.secret !== 'amaan2026') {
+    if (!req.adminSession) {
       req.body.status = 'pending';
     }
-    const newJob = new Job(req.body); 
-    const savedJob = await newJob.save(); 
+    const newJob = new Job(req.body);
+    const savedJob = await newJob.save();
 
     // ==========================================
     // THE HYPER-LOCAL ALERT ENGINE
@@ -58,7 +65,7 @@ app.post('/api/jobs', jobPostLimiter, async (req, res) => {
     if (savedJob.status === 'approved') {
       const matchingTutors = await Tutor.find({
         status: 'approved',
-        city: { $regex: new RegExp(`^${savedJob.city}$`, 'i') }, 
+        city: { $regex: new RegExp(`^${savedJob.city}$`, 'i') },
         preferredArea: { $regex: new RegExp(`^${savedJob.location}$`, 'i') }
       });
 
@@ -70,7 +77,7 @@ app.post('/api/jobs', jobPostLimiter, async (req, res) => {
       });
     }
 
-    res.status(201).json(savedJob); 
+    res.status(201).json(savedJob);
   } catch (err) {
     console.error("Database Error:", err);
     res.status(400).json({ message: "Error saving job", error: err.message });
@@ -81,18 +88,19 @@ app.post('/api/jobs', jobPostLimiter, async (req, res) => {
 app.get('/api/jobs', async (req, res) => {
   try {
     // If Admin panel requests it, sort by highest salary as well
-    if (req.query.secret === 'amaan2026') {
+    if (req.adminSession) {
+      res.set('Cache-Control', 'no-store');
       const allJobs = await Job.find().sort({ salary: -1 });
       return res.status(200).json(allJobs);
     }
 
     // Public view: Fetch approved jobs and sort by salary descending (-1)
-    const approvedJobs = await Job.find({ 
-      $or: [{ status: 'approved' }, { status: {$exists: false } }] 
+    const approvedJobs = await Job.find({
+      $or: [{ status: 'approved' }, { status: {$exists: false } }]
     }).sort({ salary: -1 });
 
     const maskedJobs = approvedJobs.map(job => {
-      const jobObj = job.toObject ? job.toObject() : job; 
+      const jobObj = job.toObject ? job.toObject() : job;
       jobObj.contactNumber = "+91 XXXXX XXXXX";
       return jobObj;
     });
@@ -102,7 +110,7 @@ app.get('/api/jobs', async (req, res) => {
   }
 });
 
-app.put('/api/jobs/:id', async (req, res) => {
+app.put('/api/jobs/:id', adminAuth.requireAdmin, async (req, res) => {
   try {
     const updatedJob = await Job.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
     if (!updatedJob) return res.status(404).json({ error: 'Job not found in database.' });
@@ -112,7 +120,7 @@ app.put('/api/jobs/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/jobs/:id', async (req, res) => {
+app.delete('/api/jobs/:id', adminAuth.requireAdmin, async (req, res) => {
   try {
     await Job.findByIdAndDelete(req.params.id);
     res.json({ message: "Job deleted successfully" });
@@ -128,7 +136,7 @@ app.delete('/api/jobs/:id', async (req, res) => {
 // 1. Standard Fallback Registration (Unpaid / Legacy)
 app.post('/api/tutors', async (req, res) => {
   try {
-    const newTutor = new Tutor(req.body);
+    const newTutor = new Tutor({ ...req.body, status: 'pending', isPaid: false, paymentId: undefined, orderId: undefined });
     await newTutor.save();
     res.status(201).json({ message: 'Tutor registered successfully!' });
   } catch (error) {
@@ -165,9 +173,9 @@ app.post('/api/create-registration-order', async (req, res) => {
 // 3. VERIFY PAYMENT & REGISTER TUTOR (₹49 Flow)
 app.post('/api/tutors/verify-and-register', async (req, res) => {
   try {
-    const { 
-      name, email, phone, collegeId, city, preferredArea, 
-      razorpayPaymentId, razorpayOrderId, razorpaySignature 
+    const {
+      name, email, phone, collegeId, city, preferredArea,
+      razorpayPaymentId, razorpayOrderId, razorpaySignature
     } = req.body;
 
     // Verify Signature for Security
@@ -218,10 +226,11 @@ app.get('/api/admin/tutors/pending', async (req, res) => {
 
 app.put('/api/admin/tutors/:id/status', async (req, res) => {
   try {
-    const { status } = req.body; 
+    const { status } = req.body;
+    if (!['approved', 'rejected', 'pending'].includes(status)) return res.status(400).json({ error: 'Invalid tutor status.' });
     const updatedTutor = await Tutor.findByIdAndUpdate(
-      req.params.id, 
-      { status }, 
+      req.params.id,
+      { status },
       { new: true }
     );
     res.json(updatedTutor);
@@ -233,10 +242,17 @@ app.put('/api/admin/tutors/:id/status', async (req, res) => {
 // --- RAZORPAY PAYMENT ENGINE (LEAD UNLOCKS) ---
 app.post('/api/payment/create-order', async (req, res) => {
   try {
+    const { jobId, tutorPhone } = req.body;
+    if (typeof jobId !== 'string' || !mongoose.isObjectIdOrHexString(jobId) || typeof tutorPhone !== 'string' || !/^\d{10}$/.test(tutorPhone)) {
+      return res.status(400).json({ error: 'Select a lead and enter a valid phone number.' });
+    }
+    const job = await Job.findById(jobId);
+    if (!job || !['approved', undefined].includes(job.status)) return res.status(404).json({ error: 'Lead unavailable.' });
     const options = {
-      amount: 4900, 
+      amount: 4900,
       currency: "INR",
       receipt: `receipt_order_${Date.now()}`,
+      notes: { purpose: 'lead_unlock', jobId, tutorPhone },
     };
     const order = await razorpay.orders.create(options);
     if (!order) return res.status(500).json({ error: "Failed to create order" });
@@ -247,24 +263,30 @@ app.post('/api/payment/create-order', async (req, res) => {
 });
 
 app.post('/api/unlocks', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
   try {
-    const { jobId, tutorPhone, transactionId } = req.body;
-    const newRequest = new UnlockRequest({ jobId, tutorPhone, transactionId, status: 'Approved' });
-    await newRequest.save();
-
+    const { jobId, tutorPhone, transactionId, orderId, signature } = req.body;
+    if (typeof jobId !== 'string' || !mongoose.isObjectIdOrHexString(jobId) || typeof tutorPhone !== 'string' || !/^\d{10}$/.test(tutorPhone)) {
+      return res.status(400).json({ error: 'Invalid unlock request.' });
+    }
+    // Verify before any database write or private-contact lookup.
+    await verifyLeadPayment(razorpay, { jobId, tutorPhone, transactionId, orderId, signature }, process.env.RAZORPAY_KEY_SECRET);
     const jobDetails = await Job.findById(jobId);
-    if (!jobDetails) return res.status(404).json({ error: "Job not found" });
-
-    res.status(200).json({ 
-      message: "Payment verified successfully.",
-      unlockedContact: jobDetails.contactNumber 
-    });
+    if (!jobDetails || !['approved', undefined].includes(jobDetails.status)) return res.status(404).json({ error: 'Lead unavailable. Contact support if charged.' });
+    // Order notes bind this payment to exactly this lead and phone, so replay
+    // cannot unlock another lead. Retries for the same purchase are idempotent.
+    await UnlockRequest.findOneAndUpdate(
+      { transactionId, jobId, tutorPhone },
+      { $setOnInsert: { jobId, tutorPhone, transactionId, status: 'Approved' } },
+      { upsert: true, new: true, runValidators: true }
+    );
+    return res.status(200).json({ message: 'Payment verified successfully.', unlockedContact: jobDetails.contactNumber });
   } catch (error) {
-    res.status(500).json({ error: "Failed to process unlock request" });
+    return res.status(error.status === 409 ? 409 : 400).json({ error: error.status === 409 ? 'Payment confirmation pending. Please wait.' : 'Payment verification failed. Contact support if charged.' });
   }
 });
 
-app.get('/api/unlocks', async (req, res) => {
+app.get('/api/unlocks', adminAuth.requireAdmin, async (req, res) => {
   try {
     const requests = await UnlockRequest.find().populate('jobId').sort({ createdAt: -1 });
     res.status(200).json(requests);
@@ -273,7 +295,7 @@ app.get('/api/unlocks', async (req, res) => {
   }
 });
 
-app.put('/api/unlocks/:id/approve', async (req, res) => {
+app.put('/api/unlocks/:id/approve', adminAuth.requireAdmin, async (req, res) => {
   try {
     const request = await UnlockRequest.findByIdAndUpdate(req.params.id, { status: 'Approved' }, { new: true });
     res.status(200).json(request);
@@ -283,4 +305,5 @@ app.put('/api/unlocks/:id/approve', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+if (require.main === module) app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+module.exports = app;
