@@ -89,10 +89,27 @@ test('public jobs stay masked, old query cannot enable admin reads, parent posts
     assert.equal(res.status,200);
     assert.equal((await res.json())[0].contactNumber,'+91 XXXXX XXXXX');
     assert.ok(filter.$or);
-    const post=await request('/api/jobs?secret=obsolete-public-bypass','POST',{parentName:'Local test',contactNumber:'9999999999',subject:'Maths',grade:'5',city:'Lucknow',location:'Local test',salary:100,status:'approved'});
+    const post=await request('/api/jobs?secret=obsolete-public-bypass','POST',{parentName:'Local test',contactNumber:'9999999999',subject:'Maths',grade:'5',city:'Lucknow',location:'Local test',salary:100,status:'approved',leadType:'classic'});
     assert.equal(post.status,201);
     assert.equal(saved.status,'pending');
+    assert.equal(saved.leadType,'direct');
   } finally {Job.find=find;Job.prototype.save=save;}
+});
+test('admin-injected lead keeps its selected category and approval', async () => {
+  const Job=require('../models/jobmodel');
+  const original=Job.prototype.save;
+  const Tutor=require('../models/tutor');
+  const originalFind=Tutor.find;
+  Tutor.find=async()=>[];
+  const {token}=await (await request('/api/admin/login','POST',{password})).json();
+  let saved;
+  Job.prototype.save=async function(){saved=this;return this};
+  try {
+    const res=await request('/api/jobs','POST',{parentName:'Local admin test',contactNumber:'9999999999',subject:'Maths',grade:'5',city:'Lucknow',location:'Local test',salary:100,status:'approved',leadType:'classic'},token);
+    assert.equal(res.status,201);
+    assert.equal(saved.status,'approved');
+    assert.equal(saved.leadType,'classic');
+  } finally {Job.prototype.save=original;Tutor.find=originalFind;}
 });
 test('login is rate limited', async () => {
   let last;

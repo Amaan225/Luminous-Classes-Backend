@@ -55,6 +55,8 @@ app.post('/api/jobs', jobPostLimiter, async (req, res) => {
   try {
     if (!req.adminSession) {
       req.body.status = 'pending';
+      // Parent-posted requirements are Direct; admin-injected categories stay explicit.
+      req.body.leadType = 'direct';
     }
     const newJob = new Job(req.body);
     const savedJob = await newJob.save();
