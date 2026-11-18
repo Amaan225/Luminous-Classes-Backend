@@ -8,6 +8,7 @@ const crypto = require('crypto'); // <-- Added for Razorpay signature verificati
 
 // Models
 const Tutor = require('./models/tutor');
+const TutorProfile = require('./models/tutor-profile');
 const UnlockRequest = require('./models/UnlockRequest');
 const Job = require('./models/jobmodel');
 const Application = require('./models/application');
@@ -258,7 +259,11 @@ app.post('/api/tutors/verify-and-register', async (req, res) => {
 
 app.get('/api/admin/tutors/pending', async (req, res) => {
   try {
-    const pendingTutors = await Tutor.find({ status: 'pending' }).sort({ createdAt: -1 });
+    const [legacyPending, accountPending] = await Promise.all([
+      Tutor.find({ status: 'pending' }),
+      process.env.TUTOR_ACCOUNTS_ENABLED === 'true' ? TutorProfile.find({ status: 'pending', isPaid: true }) : []
+    ]);
+    const pendingTutors = [...legacyPending, ...accountPending].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     res.json(pendingTutors);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch pending tutors' });
@@ -269,11 +274,14 @@ app.put('/api/admin/tutors/:id/status', async (req, res) => {
   try {
     const { status } = req.body;
     if (!['approved', 'rejected', 'pending'].includes(status)) return res.status(400).json({ error: 'Invalid tutor status.' });
-    const updatedTutor = await Tutor.findByIdAndUpdate(
+    let updatedTutor = await Tutor.findByIdAndUpdate(
       req.params.id,
       { status },
       { new: true }
     );
+    if (!updatedTutor) {
+      updatedTutor = await TutorProfile.findOneAndUpdate({ _id: req.params.id }, { status }, { new: true });
+    }
     res.json(updatedTutor);
   } catch (error) {
     res.status(500).json({ error: 'Failed to update tutor status' });

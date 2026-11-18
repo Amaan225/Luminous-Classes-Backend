@@ -1,5 +1,5 @@
 const crypto=require('crypto');
-function createPaymentService({models=require('./models/tutor-account'),Tutor=require('./models/tutor'),razorpay}={}){
+function createPaymentService({models=require('./models/tutor-account'),Tutor=require('./models/tutor-profile'),razorpay}={}){
  const {Order}=models;
  async function settle(o,paymentId){
   const [order,payment]=await Promise.all([razorpay.orders.fetch(o.providerOrderId),razorpay.payments.fetch(paymentId)]);

@@ -19,12 +19,12 @@ const challengeSchema = new Schema({tokenHash:{type:String,required:true,unique:
 challengeSchema.index({expiresAt:1},{expireAfterSeconds:0});
 const orderSchema = new Schema({
   accountId:{type:Schema.Types.ObjectId,ref:'TutorAccount',required:true},
-  tutorId:{type:Schema.Types.ObjectId,ref:'Tutor',required:true},
+  tutorId:{type:Schema.Types.ObjectId,ref:'Tutor',required:function(){return this.source!=='admin-access'}},
   kind:{type:String,enum:['registration','lead'],required:true},
   resource:{type:String,required:true},
   jobId:{type:Schema.Types.ObjectId,ref:'Job'},
   providerOrderId:String,paymentId:String,
-  source:{type:String,enum:['provider','legacy-admin-reviewed'],default:'provider'},
+  source:{type:String,enum:['provider','legacy-admin-reviewed','admin-access'],default:'provider'},
   legacyUnlockId:Schema.Types.ObjectId,legacyTransactionId:String,reviewReference:String,reviewedAt:Date,
   status:{type:String,enum:['creating','created','verified','reconcile'],default:'creating'},
   amount:{type:Number,default:4900},currency:{type:String,default:'INR'},verifiedAt:Date
