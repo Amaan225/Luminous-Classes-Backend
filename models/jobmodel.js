@@ -49,6 +49,9 @@ const jobSchema = new mongoose.Schema({
   },
   
   // --- INTERNAL PLATFORM DATA ---
+  contactSuppressedAt: {type:Date,select:false},
+  alertFirstApprovedAt: {type:Date,select:false},
+  alertEnqueuedAt: {type:Date,select:false},
   leadType: {
     type: String,
     // THE FIX: 'direct' added as an option and set as the new default. 

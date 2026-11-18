@@ -18,6 +18,21 @@ const app = express();
 app.set('trust proxy', 1);
 
 app.use(cors());
+// Signed webhook needs exact raw bytes before the JSON body parser.
+if(process.env.TUTOR_ACCOUNTS_ENABLED==='true'){
+ const webhookRazorpay=new Razorpay({key_id:process.env.RAZORPAY_KEY_ID,key_secret:process.env.RAZORPAY_KEY_SECRET});
+ if(process.env.TUTOR_ACCOUNTS_LIVE==='true'||String(process.env.RAZORPAY_KEY_ID).startsWith('rzp_test_'))app.use('/api/tutor-account-payment-webhook',require('./tutor-account-payments').createPaymentWebhook({razorpay:webhookRazorpay}));
+}
+// Owner-only test router stays separate from public account flags and the
+// production connection. Mount before JSON parsing for raw signed TEST webhooks.
+if(process.env.TUTOR_OWNER_TEST_ENABLED==='true'){
+ const ownerTest=express.Router();let ownerReady=false;
+ app.use('/api/tutor-test',(req,res,next)=>ownerReady?next():res.status(503).json({error:'Owner test is starting. Retry shortly.'}));
+ app.use(ownerTest);
+ if(require.main===module)require('./tutor-owner-test').attachOwnerTestRuntime(ownerTest)
+  .then(runtime=>{ownerReady=Boolean(runtime);process.once('SIGTERM',()=>runtime?.close());process.once('SIGINT',()=>runtime?.close())})
+  .catch(()=>console.error('Owner test connection unavailable; public service unchanged.'));
+}
 app.use(express.json({ limit: '100kb' }));
 const adminAuth = createAdminAuth();
 app.use(adminAuth.attach);
@@ -30,6 +45,28 @@ app.get('/api/admin/session', (req, res) => res.json({ expiresAt: req.adminSessi
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
   key_secret: process.env.RAZORPAY_KEY_SECRET
+});
+
+// Phase 1 stays off until separately configured and reviewed. No legacy route changes in preview.
+if (process.env.TUTOR_ACCOUNTS_ENABLED === 'true') {
+  if (process.env.TUTOR_ACCOUNTS_LIVE !== 'true') {
+    let previewDatabase = '';
+    try { previewDatabase = new URL(process.env.MONGO_URI).pathname.slice(1); } catch { /* fail closed below */ }
+    if (!['tutor49_preview', 'tutor49_test'].includes(previewDatabase)) throw new Error('Preview must use a separate named test database.');
+  }
+  const { createTutorAccountRouter } = require('./tutor-account-routes');
+  const { createTutorAccountAdminRouter } = require('./tutor-account-admin');
+  app.use('/api/tutor-account', createTutorAccountRouter({ razorpay }));
+  const {createAlertDrainRouter,configuredAlertService}=require('./tutor-alert-drain');
+  app.use('/api/internal/tutor-alert-drain',createAlertDrainRouter({service:configuredAlertService()}));
+  app.use('/api/admin/tutor-accounts', createTutorAccountAdminRouter());
+}
+app.use((req, res, next) => {
+  if (process.env.TUTOR_ACCOUNTS_LIVE === 'true' && req.method === 'POST' &&
+      ['/api/tutors', '/api/create-registration-order', '/api/tutors/verify-and-register', '/api/payment/create-order', '/api/unlocks'].includes(req.path)) {
+    return res.status(410).json({ error: 'Use your signed-in tutor account. Legacy purchases need support recovery, not another payment.' });
+  }
+  next();
 });
 
 if (require.main === module) mongoose.connect(process.env.MONGO_URI)
@@ -58,7 +95,9 @@ app.post('/api/jobs', jobPostLimiter, async (req, res) => {
       // Parent-posted requirements are Direct; admin-injected categories stay explicit.
       req.body.leadType = 'direct';
     }
+    delete req.body.contactSuppressedAt;delete req.body.alertFirstApprovedAt;delete req.body.alertEnqueuedAt;
     const newJob = new Job(req.body);
+    if(process.env.TUTOR_ALERTS_ENABLED==='true'&&newJob.status==='approved')newJob.alertFirstApprovedAt=new Date();
     const savedJob = await newJob.save();
 
     // ==========================================
@@ -114,7 +153,7 @@ app.get('/api/jobs', async (req, res) => {
 
 app.put('/api/jobs/:id', adminAuth.requireAdmin, async (req, res) => {
   try {
-    const updatedJob = await Job.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+    const updatedJob = await require('./job-update').updateJob(Job,req.params.id,req.body,{alertsEnabled:process.env.TUTOR_ALERTS_ENABLED==='true'});
     if (!updatedJob) return res.status(404).json({ error: 'Job not found in database.' });
     res.json(updatedJob);
   } catch (err) {
@@ -307,5 +346,10 @@ app.put('/api/unlocks/:id/approve', adminAuth.requireAdmin, async (req, res) => 
 });
 
 const PORT = process.env.PORT || 5000;
-if (require.main === module) app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+if (require.main === module) {
+ app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+ const service=require('./tutor-alert-drain').configuredAlertService();
+ const stopAlerts=require('./tutor-alert-loop').startAlertLoop({service,enabled:process.env.TUTOR_ALERTS_LIVE==='true',onError:message=>console.error(message)});
+ process.once('SIGTERM',stopAlerts);process.once('SIGINT',stopAlerts);
+}
 module.exports = app;

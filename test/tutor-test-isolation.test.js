@@ -1,0 +1,44 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const mongoose=require('mongoose');
+const express=require('express');
+const {MongoMemoryServer}=require('mongodb-memory-server');
+const {createTutorTestModels}=require('../tutor-test-models');
+const {createTutorAccountRouter}=require('../tutor-account-routes');
+const cookies=r=>r.headers.getSetCookie().map(c=>c.split(';')[0]).filter(c=>!c.endsWith('=')).join('; ');
+test('existing-process owner test is model, session, history and alert isolated from production',async()=>{
+ const db=await MongoMemoryServer.create();let server;let testConnection;
+ try{
+  await mongoose.connect(db.getUri('production_fixture'));
+  assert.throws(()=>createTutorTestModels(mongoose.connection),/tutor49_test/);
+  testConnection=await mongoose.createConnection(db.getUri('tutor49_test')).asPromise();
+  const scoped=createTutorTestModels(testConnection);
+  const productionModels=require('../models/tutor-account'),productionAlerts=require('../models/tutor-alert');
+  const Tutor=require('../models/tutor'),Job=require('../models/jobmodel');
+  await Promise.all([...Object.values(scoped.models),...Object.values(scoped.alertModels),scoped.Tutor,scoped.Job,...Object.values(productionModels),...Object.values(productionAlerts),Tutor,Job].map(m=>m.init()));
+  for(const model of [...Object.values(scoped.models),...Object.values(scoped.alertModels),scoped.Tutor,scoped.Job,scoped.Unlock])assert.equal(model.db,testConnection);
+  const production=await productionModels.Account.create({googleSub:'owner',email:'fixture-owner@gmail.com',name:'Production fixture'});
+  await productionModels.Session.create({accountId:production._id,tokenHash:'a'.repeat(64),csrfToken:'production-token',expiresAt:new Date(Date.now()+600000)});
+  await productionAlerts.Subscription.create({accountId:production._id,endpoint:'https://fcm.googleapis.com/production',endpointHash:'b'.repeat(64)});
+  await Job.create({parentName:'Production fixture parent',contactNumber:'9999999999',subject:'Private production fixture',grade:'8',city:'Lucknow',location:'Test',salary:5000,status:'approved'});
+  const app=express();app.use(express.json());
+  app.use('/api/tutor-test',createTutorAccountRouter({...scoped,config:{enabled:true,live:false,cookieNamespace:'t49test',secure:false,googleClientId:'fixture',origins:['http://localhost:5173'],previewEmails:['fixture-owner@gmail.com'],pendingPolicy:'masked',retentionPolicy:'retain-purchased',alertsEnabled:false},verifyGoogle:async value=>JSON.parse(value)}));
+  server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));const base=`http://127.0.0.1:${server.address().port}/api/tutor-test`;
+  const call=(path,{method='GET',cookie='',csrf='',body}={})=>fetch(base+path,{method,headers:{Origin:'http://localhost:5173','Content-Type':'application/json',Cookie:cookie,'X-CSRF-Token':csrf},...(body?{body:JSON.stringify(body)}:{})});
+  let b=await call('/bootstrap');let payload=await b.json();
+  let r=await call('/google',{method:'POST',cookie:cookies(b),body:{credential:JSON.stringify({sub:'not-owner',email:'outsider@gmail.com',email_verified:true,nonce:payload.nonce})}});
+  assert.equal(r.status,403);assert.equal(await scoped.models.Account.countDocuments(),0);
+  b=await call('/bootstrap');payload=await b.json();assert.match(cookies(b),/^t49testlogin=/);
+  r=await call('/google',{method:'POST',cookie:cookies(b),body:{credential:JSON.stringify({sub:'owner',email:'fixture-owner@gmail.com',email_verified:true,nonce:payload.nonce})}});
+  assert.equal(r.status,200);const state=await r.json(),session=cookies(r);assert.match(session,/^t49testsession=/);assert.equal(state.account.name,'');assert.equal(state.account.legacyReview,false);
+  assert.equal((await call('/session',{cookie:session.replace('t49testsession=','t49session=')})).status,401);
+  const account=await scoped.models.Account.findOne({googleSub:'owner'});assert.notEqual(String(account._id),String(production._id));
+  const tutor=await scoped.Tutor.create({name:'Test-only tutor',email:'fixture-owner@gmail.com',phone:'1111111111',collegeId:'test',city:'Lucknow',preferredArea:'Test',status:'pending'});await scoped.models.Account.updateOne({_id:account._id},{$set:{tutorId:tutor._id}});
+  r=await call('/alerts',{cookie:session});assert.equal((await r.json()).devices,0);
+  r=await call('/leads',{cookie:session});assert.deepEqual((await r.json()).jobs,[]);
+  r=await call('/history',{cookie:session});assert.deepEqual((await r.json()).items,[]);
+  assert.equal((await call('/alerts/subscription',{method:'POST',cookie:session,csrf:state.csrfToken,body:{}})).status,503);
+  assert.equal((await call('/orders',{method:'POST',cookie:session,csrf:state.csrfToken,body:{kind:'registration'}})).status,503);
+  assert.equal(await productionModels.Account.countDocuments(),1);assert.equal(await productionModels.Session.countDocuments(),1);assert.equal(await productionAlerts.Subscription.countDocuments(),1);assert.equal(await Tutor.countDocuments(),0);assert.equal(await Job.countDocuments(),1);
+ }finally{if(server)await new Promise(r=>server.close(r));if(testConnection)await testConnection.close();await mongoose.disconnect();await db.stop()}
+});
