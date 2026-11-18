@@ -62,7 +62,7 @@ if (process.env.TUTOR_ACCOUNTS_ENABLED === 'true') {
   app.use('/api/admin/tutor-accounts', createTutorAccountAdminRouter());
 }
 app.use((req, res, next) => {
-  if (process.env.TUTOR_ACCOUNTS_LIVE === 'true' && req.method === 'POST' &&
+  if (process.env.TUTOR_LEGACY_CHECKOUT_DISABLED === 'true' && process.env.TUTOR_ACCOUNTS_LIVE === 'true' && req.method === 'POST' &&
       ['/api/tutors', '/api/create-registration-order', '/api/tutors/verify-and-register', '/api/payment/create-order', '/api/unlocks'].includes(req.path)) {
     return res.status(410).json({ error: 'Use your signed-in tutor account. Legacy purchases need support recovery, not another payment.' });
   }
