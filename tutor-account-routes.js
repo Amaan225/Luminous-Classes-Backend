@@ -20,7 +20,9 @@ function createTutorAccountRouter({models=require('./models/tutor-account'),Tuto
  const origins=config.origins||String(process.env.TUTOR_ACCOUNT_ORIGINS||'').split(',').filter(Boolean);
  const secure=config.secure??true;const namespace=config.cookieNamespace||'t49';if(!['t49','t49test'].includes(namespace))throw Error('Invalid account cookie namespace');const sessionName=(secure?'__Host-':'')+namespace+'session';const preName=(secure?'__Host-':'')+namespace+'login';
  const cookieOpts={httpOnly:true,secure,sameSite:'lax',path:'/'};
- const pendingPolicy=config.pendingPolicy||process.env.TUTOR_PENDING_BOARD_POLICY;
+ const rawPendingPolicy=config.pendingPolicy||process.env.TUTOR_PENDING_BOARD_POLICY;
+ // Owner decision 2026-11-18: signed-in non-admin tutors browse the contact-free masked board before registration; purchase rules unchanged.
+ const pendingPolicy=(!config.pendingPolicy&&rawPendingPolicy==='status-only')?'masked':rawPendingPolicy;
  const retentionPolicy=config.retentionPolicy||process.env.TUTOR_PURCHASE_CONTACT_POLICY;
  const contactAvailable=j=>Boolean(j&&!j.contactSuppressedAt&&/^\d{10}$/.test(j.contactNumber||'')&&(j.status==='approved'||(retentionPolicy==='retain-purchased'&&['hidden','rejected'].includes(j.status))));
  // App-level admins: exact verified Google email, decided on the server only. Not a provider/hosting grant.
@@ -85,7 +87,7 @@ function createTutorAccountRouter({models=require('./models/tutor-account'),Tuto
  r.post('/alerts/subscription',requireSession,alertLimit,alertGate,wrap(async(req,res)=>{try{const s=await alertService.subscribe(req.tutorAccount._id,req.body);res.status(201).json({endpointHash:s.endpointHash,enabled:true});}catch{res.status(400).json({error:'Could not enable this device. Use a supported browser and a completed tutor profile.'});}}));
  r.delete('/alerts/subscription',requireSession,alertLimit,wrap(async(req,res)=>{const h=req.body.endpointHash;if(!/^[a-f0-9]{64}$/.test(h||''))return res.status(400).json({error:'Select this device subscription.'});await alertService.disable(req.tutorAccount._id,h);res.status(204).end();}));
  r.get('/leads',requireSession,wrap(async(req,res)=>{const t=req.tutorAccount.tutorId?await Tutor.findById(req.tutorAccount.tutorId):null;
- if(!isAdmin(req.tutorAccount)&&(!t||t.status!=='approved'||!t.isPaid)){if(!(pendingPolicy==='masked'&&t?.status==='pending'))return res.status(403).json({error:'Verification status view only. Board visibility awaits policy approval.'});}
+ if(!isAdmin(req.tutorAccount)&&(!t||t.status!=='approved'||!t.isPaid)){if(!(pendingPolicy==='masked'&&(!t||t.status==='pending')))return res.status(403).json({error:'Verification status view only. Board visibility awaits policy approval.'});}
  const page=Math.max(1,Math.min(100000,Number.parseInt(req.query.page)||1));const filter={status:'approved'};
  const q=clean(req.query.search,80);if(q){const rx=new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'i');filter.$or=[{subject:rx},{location:rx},{grade:rx}];}
  const [jobs,total]=await Promise.all([Job.find(filter).sort({createdAt:-1,_id:-1}).skip((page-1)*20).limit(20),Job.countDocuments(filter)]);

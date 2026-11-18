@@ -114,14 +114,14 @@ test('reconciliation API requires own session and CSRF and never settles another
  const bobAgain=await login('bob');assert.equal((await req('/orders/reconcile',{...bobAgain,method:'POST',body:{}})).status,200);assert.equal((await models.Order.findById(o._id)).status,'verified');
 });
 
-test('approved masked policy lets pending tutors browse contact-free board but not purchase; no-profile and rejected remain blocked',async()=>{
+test('approved masked policy lets pending tutors browse contact-free board but not purchase; no-profile accounts browse the same masked board but cannot purchase; rejected remains blocked',async()=>{
  const s=await login('maskedpending');const a=await profile(s,'4444444444');await Job.create({subject:'Masked policy test',grade:'8',contactNumber:'9999999999',parentName:'Private policy test',location:'Test',city:'Test',salary:5000,status:'approved'});
  const maskedBase=base.replace('/api/tutor-account','')+'/masked';
  const headers={Origin:origin,Cookie:s.cookie,'Content-Type':'application/json','X-CSRF-Token':s.csrf};
  let r=await fetch(maskedBase+'/leads',{headers});assert.equal(r.status,200);const list=await r.json();assert.ok(list.jobs.length);assert.ok(list.jobs.every(j=>!('contactNumber' in j)&&!('parentName' in j)));
  r=await fetch(maskedBase+'/orders',{method:'POST',headers,body:JSON.stringify({kind:'lead',jobId:list.jobs[0]._id})});assert.equal(r.status,403);
  await Tutor.updateOne({_id:a.tutorId},{$set:{status:'rejected'}});assert.equal((await fetch(maskedBase+'/leads',{headers})).status,403);
- await models.Account.updateOne({_id:a._id},{$set:{tutorId:null}});assert.equal((await fetch(maskedBase+'/leads',{headers})).status,403);
+ await models.Account.updateOne({_id:a._id},{$set:{tutorId:null}});r=await fetch(maskedBase+'/leads',{headers});assert.equal(r.status,200);const fresh=await r.json();assert.ok(fresh.jobs.length&&fresh.jobs.every(j=>!('contactNumber' in j)&&!('parentName' in j)));r=await fetch(maskedBase+'/orders',{method:'POST',headers,body:JSON.stringify({kind:'lead',jobId:fresh.jobs[0]._id})});assert.equal(r.status,403);
 });
 
 test('explicit preview invite gate blocks unchosen verified Google identity before creating an account',async()=>{
