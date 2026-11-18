@@ -263,7 +263,7 @@ app.get('/api/admin/tutors/pending', async (req, res) => {
       Tutor.find({ status: 'pending' }),
       process.env.TUTOR_ACCOUNTS_ENABLED === 'true' ? TutorProfile.find({ status: 'pending', isPaid: true }) : []
     ]);
-    const pendingTutors = [...legacyPending, ...accountPending].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    const pendingTutors = [...legacyPending.map(t => ({ ...t.toObject(), source: 'legacy-registration' })), ...accountPending.map(t => ({ ...t.toObject(), source: 'google-account' }))].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     res.json(pendingTutors);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch pending tutors' });
