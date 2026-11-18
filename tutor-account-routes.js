@@ -92,6 +92,7 @@ function createTutorAccountRouter({models=require('./models/tutor-account'),Tuto
  const q=clean(req.query.search,80);if(q){const rx=new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'i');filter.$or=[{subject:rx},{location:rx},{grade:rx}];}
  const [jobs,total]=await Promise.all([Job.find(filter).sort({createdAt:-1,_id:-1}).skip((page-1)*20).limit(20),Job.countDocuments(filter)]);
  const owned=await Order.find({accountId:req.tutorAccount._id,kind:'lead',status:'verified',jobId:{$in:jobs.map(j=>j._id)}}).select('jobId');const ids=new Set(owned.map(o=>id(o.jobId)));
+ console.log('tutor-leads',{admin:isAdmin(req.tutorAccount),profile:t?t.status:'none',page,search:Boolean(q),returned:jobs.length,total});
  res.json({jobs:jobs.map(j=>({...maskJob(j),unlocked:ids.has(id(j))})),page,total,pages:Math.ceil(total/20)});}));
  r.post('/orders',requireSession,payLimit,payReady,wrap(async(req,res)=>{const a=req.tutorAccount;const t=a.tutorId?await Tutor.findById(a.tutorId):null;
  if(isAdmin(a)){if(req.body.kind!=='lead'||!mongoose.isObjectIdOrHexString(req.body.jobId))return res.status(400).json({error:'Admins open leads without payment; registration is not needed.'});
