@@ -4,6 +4,7 @@ const accountSchema = new Schema({
   googleSub: {type:String,required:true,unique:true},
   email: {type:String,required:true},
   name: String,
+  picture: String,
   tutorId: {type:Schema.Types.ObjectId,ref:'Tutor',default:null},
   legacyReview: {type:Boolean,default:false}, legacyLinkedAt:Date, legacyLinkReference:String
 },{timestamps:true});

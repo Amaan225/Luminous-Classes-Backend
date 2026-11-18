@@ -45,7 +45,7 @@ function createTutorAccountRouter({models=require('./models/tutor-account'),Tuto
  req.tutorSession=session;req.tutorAccount=account;
  if(!['GET','HEAD'].includes(req.method)&&req.get('X-CSRF-Token')!==session.csrfToken)return res.status(403).json({error:'Refresh the page and retry.'});next();}
  const requireSession=wrap(auth);
- const accountView=async a=>{const t=a.tutorId?await Tutor.findById(a.tutorId):null;return {account:{email:a.email,name:a.name,legacyReview:a.legacyReview,isAdmin:isAdmin(a)},profile:t?{name:t.name,phone:t.phone,city:t.city,preferredArea:t.preferredArea,status:t.status,isPaid:Boolean(t.isPaid)}:null,preview:!live,pendingBoardPolicy:pendingPolicy||'undecided'};};
+ const accountView=async a=>{const t=a.tutorId?await Tutor.findById(a.tutorId):null;return {account:{email:a.email,name:a.name,legacyReview:a.legacyReview,isAdmin:isAdmin(a),picture:a.picture||''},profile:t?{name:t.name,phone:t.phone,city:t.city,preferredArea:t.preferredArea,status:t.status,isPaid:Boolean(t.isPaid)}:null,preview:!live,pendingBoardPolicy:pendingPolicy||'undecided'};};
  const requireBuyer=wrap(async(req,res,next)=>{const a=req.tutorAccount;const t=a.tutorId?await Tutor.findById(a.tutorId):null;if(!t||t.status!=='approved'||!t.isPaid)return res.status(403).json({error:'Paid registration and admin approval required.'});req.tutorProfile=t;next();});
  const payReady=(req,res,next)=>{if(!razorpay||!paySecret)return res.status(503).json({error:'Payments are not configured.'});
   if(!live&&!String(config.paymentKey||process.env.RAZORPAY_KEY_ID).startsWith('rzp_test_'))return res.status(503).json({error:'Preview cannot use live payment keys.'});next();};
@@ -62,6 +62,7 @@ function createTutorAccountRouter({models=require('./models/tutor-account'),Tuto
  if(!live&&(!verifyGoogle||config.previewEmails)&&!previewEmails.includes(p.email.toLowerCase()))return res.status(403).json({error:'This separate test app is invite-only.'});
  let a=await Account.findOne({googleSub:p.sub});if(a?.legacyReview&&!a.tutorId&&!a.legacyLinkedAt){await Account.updateOne({_id:a._id,tutorId:null,legacyReview:true},{$set:{legacyReview:false}});a.legacyReview=false;}if(!a){const email=p.email.toLowerCase();
  try{a=await Account.create({googleSub:p.sub,email,name:clean(p.name,80),legacyReview:false});}catch(e){if(e.code!==11000)throw e;a=await Account.findOne({googleSub:p.sub});}}
+ {const pic=typeof p.picture==='string'&&/^https:\/\/lh3\.googleusercontent\.com\/[\w\-\/=.%~:+@,]{1,400}$/.test(p.picture)?p.picture:'';if(pic!==(a.picture||'')){await Account.updateOne({_id:a._id},{$set:{picture:pic}});a.picture=pic;}}
  const old=cookieValue(req,sessionName);if(old)await Session.deleteOne({tokenHash:hash(old)});
  const token=random(),csrfToken=random();await Session.create({tokenHash:hash(token),accountId:a._id,csrfToken,expiresAt:new Date(Date.now()+7*86400000)});
  res.clearCookie(preName,cookieOpts);res.cookie(sessionName,token,{...cookieOpts,maxAge:7*86400000});res.json({...await accountView(a),csrfToken});}));
