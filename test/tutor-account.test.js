@@ -120,6 +120,7 @@ test('approved masked policy lets pending tutors browse contact-free board but n
  const headers={Origin:origin,Cookie:s.cookie,'Content-Type':'application/json','X-CSRF-Token':s.csrf};
  let r=await fetch(maskedBase+'/leads',{headers});assert.equal(r.status,200);const list=await r.json();assert.ok(list.jobs.length);assert.ok(list.jobs.every(j=>!('contactNumber' in j)&&!('parentName' in j)));
  r=await fetch(maskedBase+'/orders',{method:'POST',headers,body:JSON.stringify({kind:'lead',jobId:list.jobs[0]._id})});assert.equal(r.status,403);
+ await Tutor.updateOne({_id:a.tutorId},{$set:{status:'approved',isPaid:false}});assert.equal((await fetch(maskedBase+'/leads',{headers})).status,200);
  await Tutor.updateOne({_id:a.tutorId},{$set:{status:'rejected'}});assert.equal((await fetch(maskedBase+'/leads',{headers})).status,403);
  await models.Account.updateOne({_id:a._id},{$set:{tutorId:null}});r=await fetch(maskedBase+'/leads',{headers});assert.equal(r.status,200);const fresh=await r.json();assert.ok(fresh.jobs.length&&fresh.jobs.every(j=>!('contactNumber' in j)&&!('parentName' in j)));r=await fetch(maskedBase+'/orders',{method:'POST',headers,body:JSON.stringify({kind:'lead',jobId:fresh.jobs[0]._id})});assert.equal(r.status,403);
 });

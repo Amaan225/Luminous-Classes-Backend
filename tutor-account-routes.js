@@ -87,7 +87,7 @@ function createTutorAccountRouter({models=require('./models/tutor-account'),Tuto
  r.post('/alerts/subscription',requireSession,alertLimit,alertGate,wrap(async(req,res)=>{try{const s=await alertService.subscribe(req.tutorAccount._id,req.body);res.status(201).json({endpointHash:s.endpointHash,enabled:true});}catch{res.status(400).json({error:'Could not enable this device. Use a supported browser and a completed tutor profile.'});}}));
  r.delete('/alerts/subscription',requireSession,alertLimit,wrap(async(req,res)=>{const h=req.body.endpointHash;if(!/^[a-f0-9]{64}$/.test(h||''))return res.status(400).json({error:'Select this device subscription.'});await alertService.disable(req.tutorAccount._id,h);res.status(204).end();}));
  r.get('/leads',requireSession,wrap(async(req,res)=>{const t=req.tutorAccount.tutorId?await Tutor.findById(req.tutorAccount.tutorId):null;
- if(!isAdmin(req.tutorAccount)&&(!t||t.status!=='approved'||!t.isPaid)){if(!(pendingPolicy==='masked'&&(!t||t.status==='pending')))return res.status(403).json({error:'Verification status view only. Board visibility awaits policy approval.'});}
+ if(!isAdmin(req.tutorAccount)&&(!t||t.status!=='approved'||!t.isPaid)){if(!(pendingPolicy==='masked'&&(!t||t.status!=='rejected')))return res.status(403).json({error:'Verification status view only. Board visibility awaits policy approval.'});}
  const page=Math.max(1,Math.min(100000,Number.parseInt(req.query.page)||1));const filter={status:'approved'};
  const q=clean(req.query.search,80);if(q){const rx=new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'i');filter.$or=[{subject:rx},{location:rx},{grade:rx}];}
  const [jobs,total]=await Promise.all([Job.find(filter).sort({createdAt:-1,_id:-1}).skip((page-1)*20).limit(20),Job.countDocuments(filter)]);
