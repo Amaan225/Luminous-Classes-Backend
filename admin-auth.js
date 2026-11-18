@@ -58,10 +58,19 @@ function createAdminAuth(passwordHash = process.env.ADMIN_PASSWORD_HASH) {
       return res.status(503).json({ error: 'Admin sign-in is temporarily unavailable.' });
     }
   };
+  // Server-side only: mints the same bearer session as a password login for a verified Google admin.
+  const issue = () => {
+    for (const [key, expiry] of sessions) if (expiry <= Date.now()) sessions.delete(key);
+    if (sessions.size >= 1000) throw new Error('Too many sessions');
+    const token = crypto.randomBytes(32).toString('base64url');
+    const expiresAt = Date.now() + SESSION_MS;
+    sessions.set(digest(token), expiresAt);
+    return { token, expiresAt };
+  };
   const logout = (req, res) => {
     if (req.adminSession) sessions.delete(req.adminSession.key);
     res.set('Cache-Control', 'no-store').status(204).end();
   };
-  return { attach, requireAdmin, loginLimiter, login, logout };
+  return { attach, requireAdmin, loginLimiter, login, logout, issue };
 }
 module.exports = { createAdminAuth, SESSION_MS };

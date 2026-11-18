@@ -63,6 +63,7 @@ function createTutorAccountRouter({models=require('./models/tutor-account'),Tuto
  const old=cookieValue(req,sessionName);if(old)await Session.deleteOne({tokenHash:hash(old)});
  const token=random(),csrfToken=random();await Session.create({tokenHash:hash(token),accountId:a._id,csrfToken,expiresAt:new Date(Date.now()+7*86400000)});
  res.clearCookie(preName,cookieOpts);res.cookie(sessionName,token,{...cookieOpts,maxAge:7*86400000});res.json({...await accountView(a),csrfToken});}));
+ r.post('/admin-console',requireSession,wrap(async(req,res)=>{if(!isAdmin(req.tutorAccount)||typeof config.issueAdminSession!=='function')return res.status(403).json({error:'Admin access required.'});res.json(config.issueAdminSession());}));
  r.get('/session',requireSession,wrap(async(req,res)=>res.json({...await accountView(req.tutorAccount),csrfToken:req.tutorSession.csrfToken})));
  r.post('/logout',requireSession,wrap(async(req,res)=>{await Session.deleteOne({_id:req.tutorSession._id});res.clearCookie(sessionName,cookieOpts);res.status(204).end();}));
  r.post('/profile',requireSession,wrap(async(req,res)=>{const a=req.tutorAccount;if(a.legacyReview)return res.status(409).json({error:'Existing registration needs a support ownership check. Do not pay again.'});

@@ -57,7 +57,7 @@ if (process.env.TUTOR_ACCOUNTS_ENABLED === 'true') {
   }
   const { createTutorAccountRouter } = require('./tutor-account-routes');
   const { createTutorAccountAdminRouter } = require('./tutor-account-admin');
-  app.use('/api/tutor-account', createTutorAccountRouter({ razorpay }));
+  app.use('/api/tutor-account', createTutorAccountRouter({ razorpay, config: { issueAdminSession: adminAuth.issue } }));
   const {createAlertDrainRouter,configuredAlertService}=require('./tutor-alert-drain');
   app.use('/api/internal/tutor-alert-drain',createAlertDrainRouter({service:configuredAlertService()}));
   app.use('/api/admin/tutor-accounts', createTutorAccountAdminRouter());

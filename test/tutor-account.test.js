@@ -140,3 +140,15 @@ test('server-side admin email opens leads and contacts without payment; non-admi
  assert.equal(await models.Order.countDocuments({accountId:(await models.Account.findOne({googleSub:'adminsub'}))._id,paymentId:{$exists:true}}),0);
  const spoof=await login('spoofsub','amaank7007+x@gmail.com');assert.equal(spoof.data.account.isAdmin,false);assert.equal((await req('/leads',spoof)).status,403);assert.equal((await req('/orders',{...spoof,method:'POST',body:{kind:'lead',jobId:String(jb._id),isAdmin:true}})).status,403);
 });
+
+test('Google admin can mint the existing admin-console session only server-side; others cannot',async()=>{
+ const adm=await login('adminsub2','amaank7007@gmail.com');const none=await req('/admin-console',{...adm,method:'POST',body:{}});assert.equal(none.status,403);
+ const issued=[];const {createTutorAccountRouter:mk}=require('../tutor-account-routes');const app=express();app.use(express.json());
+ app.use('/x',mk({models,Tutor,Job,razorpay:rp,config:{loginLimit:200,enabled:true,googleClientId:'test-client',origins:[origin],secure:false,paymentSecret:secret,pendingPolicy:'status-only',retentionPolicy:'retain-purchased',issueAdminSession:()=>{issued.push(1);return {token:'t',expiresAt:1}}},verifyGoogle:async v=>JSON.parse(v)}));
+ const srv=await new Promise(r=>{const s=app.listen(0,()=>r(s))});const b='http://127.0.0.1:'+srv.address().port+'/x';
+ const bs=await fetch(b+'/bootstrap');const pj=await bs.json();const ck=r=>r.headers.getSetCookie().map(c=>c.split(';')[0]).join('; ');
+ const lg=async(sub,email)=>{const b0=await fetch(b+'/bootstrap');const p=await b0.json();const r=await fetch(b+'/google',{method:'POST',headers:{'Content-Type':'application/json',Cookie:ck(b0),Origin:origin},body:JSON.stringify({credential:JSON.stringify({sub,email,name:'T',email_verified:true,nonce:p.nonce})})});return {cookie:ck(r),csrf:(await r.json()).csrfToken}};
+ const a1=await lg('adm3','amaank7007@gmail.com'),a2=await lg('usr3','someone@gmail.com');
+ const call=s=>fetch(b+'/admin-console',{method:'POST',headers:{'Content-Type':'application/json',Cookie:s.cookie,Origin:origin,'X-CSRF-Token':s.csrf},body:'{}'});
+ assert.equal((await call(a2)).status,403);assert.equal(issued.length,0);const ok=await call(a1);assert.equal(ok.status,200);assert.equal((await ok.json()).token,'t');assert.equal(issued.length,1);srv.close();
+});
