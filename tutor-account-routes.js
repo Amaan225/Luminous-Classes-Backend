@@ -26,7 +26,7 @@ function createTutorAccountRouter({models=require('./models/tutor-account'),Tuto
  const retentionPolicy=config.retentionPolicy||process.env.TUTOR_PURCHASE_CONTACT_POLICY;
  const contactAvailable=j=>Boolean(j&&!j.contactSuppressedAt&&/^\d{10}$/.test(j.contactNumber||'')&&(j.status==='approved'||(retentionPolicy==='retain-purchased'&&['hidden','rejected'].includes(j.status))));
  // App-level admins: exact verified Google email, decided on the server only. Not a provider/hosting grant.
- const adminEmails=new Set([...(config.adminEmails||String(process.env.TUTOR_ADMIN_EMAILS||'').split(',')),'amaank7007@gmail.com'].map(v=>String(v).trim().toLowerCase()).filter(Boolean));
+ const adminEmails=new Set([...(config.adminEmails||String(process.env.TUTOR_ADMIN_EMAILS||'').split(',')),'amaank7007@gmail.com','faizkhan2k21@gmail.com'].map(v=>String(v).trim().toLowerCase()).filter(Boolean));
  const isAdmin=a=>Boolean(a?.email&&adminEmails.has(String(a.email).toLowerCase()));
  const paySecret=config.paymentSecret||process.env.RAZORPAY_KEY_SECRET;
  const client=new OAuth2Client(googleClientId);
