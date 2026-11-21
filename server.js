@@ -87,6 +87,7 @@ const jobPostLimiter = rateLimit({
 // --- ROUTES ---
 app.get('/', (req, res) => res.send('Luminous Backend is connected to the Database!'));
 app.get('/api/ping', (req, res) => res.status(200).json({ message: "Luminous API is awake!" }));
+app.get('/api/version', (req, res) => res.status(200).json({ commit: (process.env.RENDER_GIT_COMMIT || '').slice(0, 7) || 'unknown' }));
 
 // CREATE A NEW JOB & TRIGGER ALERTS
 app.post('/api/jobs', jobPostLimiter, async (req, res) => {
