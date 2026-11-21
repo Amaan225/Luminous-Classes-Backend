@@ -115,7 +115,7 @@ app.post('/api/jobs', jobPostLimiter, async (req, res) => {
       console.log(`Alert Engine: Found ${matchingTutors.length} tutors in ${savedJob.location}.`);
 
       matchingTutors.forEach(tutor => {
-        const message = `🚨 *Tutor49 Alert!* 🚨\nA new ₹${savedJob.salary} tuition requirement was just posted in your area: *${savedJob.location}*.\n\nSubject: ${savedJob.subject}\n\nLog in now to unlock it before it's gone!`;
+        const message = `🚨 *Tutor49 Alert!* 🚨\nA new ${savedJob.salary ? `₹${savedJob.salary}` : 'Negotiable'} tuition requirement was just posted in your area: *${savedJob.location}*.\n\nSubject: ${savedJob.subject}\n\nLog in now to unlock it before it's gone!`;
         console.log(`Sending WhatsApp to ${tutor.name} (${tutor.phone}): \n${message}`);
       });
     }
