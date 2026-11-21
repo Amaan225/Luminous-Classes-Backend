@@ -347,7 +347,13 @@ app.get('/api/unlocks', adminAuth.requireAdmin, async (req, res) => {
 
 app.put('/api/unlocks/:id/approve', adminAuth.requireAdmin, async (req, res) => {
   try {
-    const request = await UnlockRequest.findByIdAndUpdate(req.params.id, { status: 'Approved' }, { new: true });
+    const request = await UnlockRequest.findById(req.params.id);
+    if (!request) return res.status(404).json({ error: 'Unlock request not found.' });
+    if (request.status !== 'Approved') {
+      request.status = 'Approved';
+      request.approvedAt = new Date();
+      await request.save();
+    }
     res.status(200).json(request);
   } catch (error) {
     res.status(500).json({ error: "Failed to approve payment" });

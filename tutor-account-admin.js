@@ -10,7 +10,9 @@ function createTutorAccountAdminRouter({models=require('./models/tutor-account')
  const tutors=await Tutor.find().select('name email phone status isPaid').limit(100);
  const legacyUnlocks=await Unlock.find().select('jobId tutorPhone transactionId status createdAt').sort({createdAt:-1}).limit(100);
  const recovered=await Order.find({legacyUnlockId:{$exists:true}}).select('legacyUnlockId accountId');
- res.json({accounts,tutors,legacyUnlocks,recovered});}));
+ const rawPurchases=await Order.find({kind:'lead',status:'verified'}).populate('accountId','email').select('jobId accountId verifiedAt source').sort({verifiedAt:-1}).limit(200);
+ const purchases=rawPurchases.map(p=>({jobId:p.jobId,email:p.accountId?.email||'Not recorded',verifiedAt:p.verifiedAt||null,source:p.source}));
+ res.json({accounts,tutors,legacyUnlocks,recovered,purchases});}));
  r.post('/link-registration',wrap(async(req,res)=>{const {accountId,tutorId,reference,ownershipVerified}=req.body;
  if(!oid(accountId)||!oid(tutorId)||ownershipVerified!==true||typeof reference!=='string'||reference.trim().length<12||reference.length>300)return res.status(400).json({error:'Explicit ownership confirmation and a support evidence reference are required.'});
  const [a,t]=await Promise.all([Account.findById(accountId),Tutor.findById(tutorId)]);if(!a||!t)return res.status(404).json({error:'Account or registration not found.'});

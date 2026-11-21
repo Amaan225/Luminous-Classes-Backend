@@ -19,6 +19,10 @@ const unlockRequestSchema = new mongoose.Schema({
     enum: ['Pending', 'Approved', 'Rejected'], 
     default: 'Pending' 
   },
+  // Forward-only: set when an admin approves. Absent on older records = approval time never recorded.
+  approvedAt: {
+    type: Date
+  },
   createdAt: { 
     type: Date, 
     default: Date.now 
