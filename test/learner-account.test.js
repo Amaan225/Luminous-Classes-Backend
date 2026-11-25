@@ -87,3 +87,13 @@ test('preferences save to the account, are per learner, validated, and CSRF prot
  assert.equal((await put(a,{level:'exam',target:'SSC CGL'})).status,400);
  assert.equal((await put(a,{level:'exam',target:'a',subject:'b'},{csrf:'wrong'})).status,403);
  assert.deepEqual((await (await me(a,'/me')).json()).prefs,{level:'exam',target:'SSC CGL',subject:'Reasoning'});});
+test('figures: served from the quiz, not copied into attempts, and dropped if the quiz figure changes',async()=>{const s=await login('f1');
+ const png='data:image/png;base64,iVBORw0KGgo=';
+ const fq=await L.Quiz.create({title:'Fig',published:true,levels:['exam'],targets:['SSC CGL'],subjects:['Reasoning'],kind:'sectional',difficulty:'easy',minutes:10,marks:2,negativeMarks:0.5,questions:[
+  {text:'F1',options:['a','b','c','d'],answer:1,explanation:'e',section:'Reasoning',image:{src:png,alt:'A grid'}},{text:'F2',options:['a','b','c','d'],answer:0,explanation:'e',section:'Reasoning'}]});
+ const st=await (await me(s,'/attempts/start',{...s,method:'POST',body:{quizId:String(fq._id)}})).json();
+ assert.equal(st.questions[0].image.src,png);assert.equal(st.questions[0].image.alt,'A grid');assert.equal(st.questions[1].image,undefined);
+ const raw=await LA.Attempt.findById(st.attemptId).select('+questions').lean();assert.equal(raw.questions[0].image.src,undefined);assert.equal(raw.questions[0].image.alt,'A grid');
+ const d=await (await me(s,`/attempts/${st.attemptId}/submit`,{...s,method:'POST',body:{answers:[1,0]}})).json();assert.equal(d.questions[0].image.src,png);assert.equal(d.score,4);
+ await L.Quiz.updateOne({_id:fq._id},{$set:{'questions.0.image.alt':'Changed'}});
+ const rv=await (await me(s,'/attempts/'+st.attemptId)).json();assert.equal(rv.questions[0].image,undefined);});
