@@ -1,4 +1,4 @@
-const express=require('express');const crypto=require('crypto');const rateLimit=require('express-rate-limit');
+const express=require('express');const {rankFor}=require('./learner-rank');const crypto=require('crypto');const rateLimit=require('express-rate-limit');
 const hash=s=>crypto.createHash('sha256').update(s).digest('hex');
 const cookieValue=(req,name)=>(req.headers.cookie||'').split(';').map(s=>s.trim()).find(s=>s.startsWith(name+'='))?.slice(name.length+1)||'';
 const GRACE_MS=30000,MAX_ATTEMPTS=Number(process.env.LEARNER_ATTEMPT_CAP)||0; // 0 = no cap. Retention cap is an undecided product policy.
@@ -44,14 +44,14 @@ function createLearnerAccountRouter({accountModels=require('./models/tutor-accou
   const a=req.body?.answers;if(!Array.isArray(a)||a.length>at.questions.length||a.some(v=>v!==null&&!Number.isInteger(v)))return res.status(400).json({error:'Invalid answers.'});
   const g=grade(at,a);const seconds=Math.min(Math.round((now-at.startedAt)/1000),at.minutes*60);
   const done=await Attempt.findOneAndUpdate({_id:at._id,status:'in-progress'},{$set:{status:'submitted',submittedAt:new Date(now),answers:a.map(v=>v===null?-1:v),...g,seconds}},{new:true});
-  if(!done)return res.status(409).json({error:'Already submitted.'});res.json(reviewOf(at,done,await figures(at)))}));
+  if(!done)return res.status(409).json({error:'Already submitted.'});res.json({...reviewOf(at,done,await figures(at)),rank:await rankFor(Attempt,{...at.toObject(),_id:done._id,accountId:done.accountId,quizId:done.quizId})})}));
  // Figures live on the quiz once. An attempt keeps the alt marker and gets the picture only while the quiz still has the same figure.
  const figures=async at=>{if(!at.questions.some(q=>q.image?.alt))return[];const live=await Quiz.findById(at.quizId).select('questions.image');return at.questions.map((q,i)=>{const li=live?.questions?.[i]?.image;return q.image?.alt&&li&&li.alt===q.image.alt?{src:li.src,alt:li.alt}:undefined})};
  const reviewOf=(q,d,f=[])=>({attemptId:String(d._id),title:d.title,score:d.score,maxScore:d.maxScore,correct:d.correct,wrong:d.wrong,skipped:d.skipped,total:d.total,seconds:d.seconds,submittedAt:d.submittedAt,
   questions:q.questions.map((x,i)=>({text:x.text,options:x.options,section:x.section||'',chosen:d.answers[i]>=0?d.answers[i]:null,answer:x.answer,explanation:x.explanation,...(f[i]?{image:f[i]}:{})}))});
  const row=d=>({attemptId:String(d._id),title:d.title,kind:d.kind,score:d.score,maxScore:d.maxScore,correct:d.correct,wrong:d.wrong,skipped:d.skipped,total:d.total,seconds:d.seconds,submittedAt:d.submittedAt});
  r.get('/attempts',wrap(async(req,res)=>{const l=Math.min(Math.max(parseInt(req.query.limit)||20,1),100);const rows=await Attempt.find({accountId:req.acct._id,status:'submitted'}).sort({submittedAt:-1}).limit(l);res.json({attempts:rows.map(row)})}));
- r.get('/attempts/:id',wrap(async(req,res)=>{if(!idOK(req.params.id))return res.status(404).end();const d=await Attempt.findOne({_id:req.params.id,accountId:req.acct._id,status:'submitted'}).select('+questions');if(!d)return res.status(404).end();res.json(reviewOf(d,d,await figures(d)))}));
+ r.get('/attempts/:id',wrap(async(req,res)=>{if(!idOK(req.params.id))return res.status(404).end();const d=await Attempt.findOne({_id:req.params.id,accountId:req.acct._id,status:'submitted'}).select('+questions');if(!d)return res.status(404).end();res.json({...reviewOf(d,d,await figures(d)),rank:await rankFor(Attempt,d.toObject())})}));
  r.get('/dashboard',wrap(async(req,res)=>{const rows=await Attempt.find({accountId:req.acct._id,status:'submitted'}).sort({submittedAt:-1});const n=rows.length;
   if(!n)return res.json({empty:true,tests:0});
   let correct=0,wrong=0,seconds=0;const sec=new Map(),days=new Set(),week=new Map();const now=Date.now();

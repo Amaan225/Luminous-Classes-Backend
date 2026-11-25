@@ -97,3 +97,13 @@ test('figures: served from the quiz, not copied into attempts, and dropped if th
  const d=await (await me(s,`/attempts/${st.attemptId}/submit`,{...s,method:'POST',body:{answers:[1,0]}})).json();assert.equal(d.questions[0].image.src,png);assert.equal(d.score,4);
  await L.Quiz.updateOne({_id:fq._id},{$set:{'questions.0.image.alt':'Changed'}});
  const rv=await (await me(s,'/attempts/'+st.attemptId)).json();assert.equal(rv.questions[0].image,undefined);});
+test('submit and review carry a private own-result rank; first attempt basis, no other learners exposed',async()=>{
+ const s=await login('rk1'),s2=await login('rk2');
+ const run=async(c,ans)=>{const st=await (await me(c,'/attempts/start',{...c,method:'POST',body:{quizId:String(quiz._id)}})).json();return {id:st.attemptId,res:await (await me(c,`/attempts/${st.attemptId}/submit`,{...c,method:'POST',body:{answers:ans}})).json()}};
+ const a=await run(s,[1,2,0]);assert.equal(a.res.rank.available,true);assert.equal(a.res.rank.isFirstAttempt,true);assert.equal(a.res.rank.smallCohort,true);
+ const prior=a.res.rank.participants;
+ const b=await run(s2,[0,0,0]);assert.equal(b.res.rank.participants,prior+1);assert.ok(b.res.rank.rank>=1);
+ const again=await run(s,[1,2,0]);assert.equal(again.res.rank.isFirstAttempt,false);assert.equal(again.res.rank.firstScore,a.res.rank.firstScore);
+ assert.equal((await me(s,'/attempts/'+b.id,{...s})).status,404);
+ const own=await (await me(s2,'/attempts/'+b.id,{...s2})).json();assert.equal(own.rank.participants,b.res.rank.participants);
+ const txt=JSON.stringify(own.rank);assert.ok(!/accountId|email|name|rk1|rk2/i.test(txt));});
