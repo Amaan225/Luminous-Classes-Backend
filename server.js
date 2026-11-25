@@ -34,13 +34,18 @@ if(process.env.TUTOR_OWNER_TEST_ENABLED==='true'){
   .then(runtime=>{ownerReady=Boolean(runtime);process.once('SIGTERM',()=>runtime?.close());process.once('SIGINT',()=>runtime?.close())})
   .catch(()=>console.error('Owner test connection unavailable; public service unchanged.'));
 }
-app.use(express.json({ limit: '100kb' }));
 const adminAuth = createAdminAuth();
 app.use(adminAuth.attach);
+// Larger bodies only after admin authentication, restricted to learner uploads/imports.
+app.use('/api/admin/learner', adminAuth.requireAdmin, express.json({limit:'4mb'}));
+app.use(express.json({ limit: '100kb' }));
 app.post('/api/admin/login', adminAuth.loginLimiter, adminAuth.login);
 app.post('/api/admin/logout', adminAuth.requireAdmin, adminAuth.logout);
 app.use('/api/admin', adminAuth.requireAdmin);
 app.get('/api/admin/session', (req, res) => res.json({ expiresAt: req.adminSession.expiry }));
+const learnerRouters=require('./learner-routes').createLearnerRouters();
+app.use('/api/admin/learner',learnerRouters.adminRouter);
+app.use('/api/learn',learnerRouters.publicRouter);
 
 // Razorpay Initialization
 const razorpay = new Razorpay({
