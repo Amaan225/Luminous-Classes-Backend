@@ -90,6 +90,7 @@ function createTutorAccountRouter({models=require('./models/tutor-account'),Tuto
  r.get('/leads',requireSession,wrap(async(req,res)=>{const t=req.tutorAccount.tutorId?await Tutor.findById(req.tutorAccount.tutorId):null;
  if(!isAdmin(req.tutorAccount)&&(!t||t.status!=='approved'||!t.isPaid)){if(!(pendingPolicy==='masked'&&(!t||t.status!=='rejected')))return res.status(403).json({error:'Verification status view only. Board visibility awaits policy approval.'});}
  const page=Math.max(1,Math.min(100000,Number.parseInt(req.query.page)||1));const filter={status:'approved'};
+ const leadType=req.query.leadType;if(leadType!==undefined&&!['direct','classic'].includes(leadType))return res.status(400).json({error:'Select Direct or Agency leads.'});if(leadType==='classic')filter.leadType='classic';if(leadType==='direct')filter.leadType={$ne:'classic'};
  const q=clean(req.query.search,80);if(q){const rx=new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'i');filter.$or=[{subject:rx},{location:rx},{grade:rx}];}
  const [jobs,total]=await Promise.all([Job.find(filter).sort({createdAt:-1,_id:-1}).skip((page-1)*20).limit(20),Job.countDocuments(filter)]);
  const owned=await Order.find({accountId:req.tutorAccount._id,kind:'lead',status:'verified',jobId:{$in:jobs.map(j=>j._id)}}).select('jobId');const ids=new Set(owned.map(o=>id(o.jobId)));
