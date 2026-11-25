@@ -1,8 +1,8 @@
 // Private own-result rank for a learner. Pure functions plus one bounded query helper.
 const crypto=require('crypto');
 // Owner/staff accounts that must not appear in a cohort. Stable account ids only, and only ids confirmed by exact record.
-// Faiz-side and staff ids are added here once confirmed. Name or email guesses never go in this list.
-const EXCLUDED_ACCOUNT_IDS=new Set(['6afd6b5ddba5129714214cfe','6afd5a57050714600db27d86']);
+// Amaan (2 exact-address matches) and Faiz (2, confirmed by his own Instinct against his original messages). Staff ids are added once confirmed. Name or email guesses never go in this list.
+const EXCLUDED_ACCOUNT_IDS=new Set(['6b0188b4203e838f44d9ec66','6afd7065dba5129714214d09','6afd6b5ddba5129714214cfe','6afd5a57050714600db27d86']);
 const COHORT_CAP=1000,SMALL_COHORT=10;
 const fingerprint=q=>{if(!q||!Array.isArray(q.questions)||!q.questions.length)return null;
  return crypto.createHash('sha256').update(JSON.stringify({m:q.marks,n:q.negativeMarks,t:q.minutes,q:q.questions.map(x=>[x.text,x.options,x.answer,x.section||''])})).digest('hex')};
