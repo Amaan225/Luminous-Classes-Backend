@@ -26,7 +26,8 @@ function createLearnerAccountRouter({accountModels=require('./models/tutor-accou
   req.profile=p;
   if(p.deleteRequestedAt&&!(req.method==='POST'&&req.path==='/data/delete-cancel')&&!(req.method==='GET'&&['/me','/data/export'].includes(req.path)))return res.status(423).json({error:'Learner data deletion is pending. Cancel it to continue.',deleteRequestedAt:p.deleteRequestedAt});
   next()}));
- const view=(a,p)=>({name:a.name||'',target:p.target,deleteRequestedAt:p.deleteRequestedAt||null});
+ const view=(a,p)=>({name:a.name||'',target:p.target,prefs:p.prefs?.level?{level:p.prefs.level,target:p.prefs.target,subject:p.prefs.subject}:null,deleteRequestedAt:p.deleteRequestedAt||null});
+ r.put('/preferences',wrap(async(req,res)=>{const b=req.body||{},o={};for(const k of ['level','target','subject']){if(typeof b[k]!=='string'||!b[k].trim()||b[k].length>60)return res.status(400).json({error:'Invalid preference.'});o['prefs.'+k]=b[k].trim()}await Profile.updateOne({_id:req.profile._id},{$set:o});res.json({ok:true})}));
  r.get('/me',wrap(async(req,res)=>res.json(view(req.acct,req.profile))));
  r.post('/attempts/start',wrap(async(req,res)=>{const id=req.body?.quizId;if(!idOK(id))return res.status(400).json({error:'Choose a practice set.'});
   const quiz=await Quiz.findOne({_id:id,published:true});if(!quiz)return res.status(404).json({error:'This practice set is no longer available.'});

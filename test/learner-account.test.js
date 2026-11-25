@@ -77,3 +77,13 @@ test('learner data delete: request locks learner data only, cancel restores, pur
  assert.equal(await purgeDeletedLearnerData({graceMs:7*86400000,now:Date.now()+8*86400000}),1);
  const a=await acct.Account.findOne({googleSub:'f1'});assert.ok(a);assert.equal(await LA.Attempt.countDocuments({accountId:a._id}),0);assert.equal((await call(0,'/api/tutor-account/session',{cookie:s.cookie})).status,200);});
 test('export contains only the caller data and no answers key material',async()=>{const s=await login('g1');const d=await (await me(s,'/data/export')).json();assert.deepEqual(Object.keys(d).sort(),['attempts','notesOpened','profile']);});
+test('preferences save to the account, are per learner, validated, and CSRF protected',async()=>{const a=await login('p1'),b=await login('p2');
+ assert.equal((await (await me(a,'/me')).json()).prefs,null);
+ const put=(s,body,o={})=>me(s,'/preferences',{...s,method:'PUT',body,...o});
+ assert.equal((await put(a,{level:'exam',target:'SSC CGL',subject:'Reasoning'})).status,200);
+ assert.deepEqual((await (await me(a,'/me')).json()).prefs,{level:'exam',target:'SSC CGL',subject:'Reasoning'});
+ assert.equal((await (await me(b,'/me')).json()).prefs,null);
+ assert.equal((await put(a,{level:'exam',target:'x'.repeat(61),subject:'y'})).status,400);
+ assert.equal((await put(a,{level:'exam',target:'SSC CGL'})).status,400);
+ assert.equal((await put(a,{level:'exam',target:'a',subject:'b'},{csrf:'wrong'})).status,403);
+ assert.deepEqual((await (await me(a,'/me')).json()).prefs,{level:'exam',target:'SSC CGL',subject:'Reasoning'});});
