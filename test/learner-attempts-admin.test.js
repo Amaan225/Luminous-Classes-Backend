@@ -1,0 +1,24 @@
+const {test,before,after}=require('node:test');
+const assert=require('node:assert/strict');
+const express=require('express');
+const mongoose=require('mongoose');
+const {MongoMemoryServer}=require('mongodb-memory-server');
+const {createLearnerAttemptsAdminRouter}=require('../learner-attempts-admin');
+const acct=require('../models/tutor-account'),LA=require('../models/learner-account');
+let db,server,base;
+before(async()=>{db=await MongoMemoryServer.create();await mongoose.connect(db.getUri('tutor49_test'));
+ const app=express();app.use('/api/admin/learner-attempts',createLearnerAttemptsAdminRouter());
+ server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));base=`http://127.0.0.1:${server.address().port}`});
+after(async()=>{await new Promise(r=>server.close(r));await mongoose.disconnect();await db.stop()});
+test('summary separates sign-up, start and submission and leaks no content',async()=>{
+ const a=await acct.Account.create({googleSub:'s1',email:'x@example.com',name:'X'});const quizId=new mongoose.Types.ObjectId();
+ const q=[{text:'SECRETQ',options:['a','b'],answer:1,explanation:'SECRETE'}];const now=Date.now();
+ await LA.Attempt.create({accountId:a._id,quizId,title:'T',kind:'full',marks:1,negativeMarks:0,minutes:5,questions:q,startedAt:new Date(now),expiresAt:new Date(now+3e5)});
+ await LA.Attempt.create({accountId:a._id,quizId,title:'T',kind:'full',marks:1,negativeMarks:0,minutes:5,questions:q,startedAt:new Date(now-1e4),expiresAt:new Date(now+3e5),status:'submitted',submittedAt:new Date(now),answers:[1],correct:1,wrong:0,skipped:0,total:1,score:1,maxScore:1,seconds:9,sections:[{name:'S',correct:1,attempted:1,total:1}]});
+ const t=await (await fetch(base+'/api/admin/learner-attempts')).text();const d=JSON.parse(t);
+ assert.equal(d.totals.attempts,2);assert.equal(d.totals.byStatus['in-progress'],1);assert.equal(d.totals.byStatus.submitted,1);assert.equal(d.accounts.length,1);
+ const sub=d.attempts.find(x=>x.status==='submitted'),ip=d.attempts.find(x=>x.status==='in-progress');
+ assert.equal(sub.score,1);assert.ok(sub.submittedAt);assert.equal(ip.score,null);assert.equal(ip.submittedAt,null);
+ assert.ok(!/SECRET|answers|explanation|questions/.test(t));
+ assert.equal((await fetch(base+'/api/admin/learner-attempts?since=nope')).status,400);
+ const f=await (await fetch(base+'/api/admin/learner-attempts?since='+new Date(now+60000).toISOString())).json();assert.equal(f.attempts.length,0)});

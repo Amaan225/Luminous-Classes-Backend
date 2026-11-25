@@ -68,6 +68,7 @@ if (process.env.TUTOR_ACCOUNTS_ENABLED === 'true') {
   const {createAlertDrainRouter,configuredAlertService}=require('./tutor-alert-drain');
   app.use('/api/internal/tutor-alert-drain',createAlertDrainRouter({service:configuredAlertService()}));
   app.use('/api/admin/tutor-accounts', createTutorAccountAdminRouter());
+  app.use('/api/admin/learner-attempts', require('./learner-attempts-admin').createLearnerAttemptsAdminRouter());
   app.use('/api/learn/me', require('./learner-account-routes').createLearnerAccountRouter());
 }
 app.use((req, res, next) => {
