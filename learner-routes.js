@@ -1,7 +1,7 @@
 const express=require('express');const crypto=require('crypto');const rateLimit=require('express-rate-limit');const {PDFDocument,StandardFonts,rgb,degrees,PDFName}=require('pdf-lib');
 const MAX_FILE=2*1024*1024,MAX_STORAGE=20*1024*1024;const LEVELS=['school','college','exam','skills'];
 const SUBJECTS=['Mathematics','Science','English','Quantitative Aptitude','Reasoning','General Awareness','General Science','General Studies (GS)','Coding','Computer Basics'];
-const TARGETS={school:['Class 1','Class 2','Class 3','Class 4','Class 5','Class 6','Class 7','Class 8','Class 9','Class 10','Class 11','Class 12'],college:['General foundation','Undergraduate'],exam:['SSC CGL','SSC CHSL','RRB NTPC','UPSSSC PET','Bank PO','Other exam'],skills:['Self-paced']};
+const TARGETS={school:['Class 1','Class 2','Class 3','Class 4','Class 5','Class 6','Class 7','Class 8','Class 9','Class 10','Class 11','Class 12'],college:['General foundation','Undergraduate'],exam:['SSC CGL','SSC CHSL','SSC MTS','SSC GD','RRB NTPC','UPSSSC PET','Bank PO','IBPS PO','Other exam'],skills:['Self-paced']};
 const KINDS=['practice','sectional','full','pyq','sample'],EXAM_LEVEL=['full','pyq','sample'],DIFFICULTIES=['easy','moderate','hard'];
 const wrap=fn=>(req,res,next)=>Promise.resolve(fn(req,res,next)).catch(next);
 function cleanText(v,max,required=false){if(typeof v!=='string'||v.trim().length>max||(required&&!v.trim()))throw Error('Invalid text field.');return v.trim()}
