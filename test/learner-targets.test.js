@@ -9,3 +9,8 @@ test('UGC NET and CTET subjects are accepted',()=>{
   assert.deepEqual(quizData({...base,targets:['UGC NET'],subjects:['Teaching and Research Aptitude']}).subjects,['Teaching and Research Aptitude']);
   assert.deepEqual(quizData({...base,targets:['CTET'],subjects:['Child Development and Pedagogy']}).subjects,['Child Development and Pedagogy']);
 });
+test('negative marks accept exact one third but still reject other long decimals',()=>{
+  assert.equal(quizData({...base,marks:1,negativeMarks:1/3,targets:['RRB NTPC']}).negativeMarks,1/3);
+  assert.throws(()=>quizData({...base,marks:1,negativeMarks:0.3333,targets:['RRB NTPC']}));
+  assert.throws(()=>quizData({...base,marks:1,negativeMarks:0.333,targets:['RRB NTPC']}));
+});
