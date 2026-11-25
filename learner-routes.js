@@ -1,6 +1,6 @@
 const express=require('express');const crypto=require('crypto');const rateLimit=require('express-rate-limit');const {PDFDocument,StandardFonts,rgb,degrees,PDFName}=require('pdf-lib');
 const MAX_FILE=2*1024*1024,MAX_STORAGE=20*1024*1024;const LEVELS=['school','college','exam','skills'];
-const SUBJECTS=['Mathematics','Science','English','Quantitative Aptitude','Reasoning','General Awareness','General Science','General Studies (GS)','Coding','Computer Basics','Teaching and Research Aptitude','Child Development and Pedagogy'];
+const SUBJECTS=['Mathematics','Science','English','Quantitative Aptitude','Reasoning','General Awareness','General Science','General Studies (GS)','Coding','Computer Basics','Teaching and Research Aptitude','Child Development and Pedagogy','Environmental Studies'];
 const TARGETS={school:['Class 1','Class 2','Class 3','Class 4','Class 5','Class 6','Class 7','Class 8','Class 9','Class 10','Class 11','Class 12'],college:['General foundation','Undergraduate'],exam:['SSC CGL','SSC CHSL','SSC MTS','SSC GD','RRB NTPC','UPSSSC PET','Bank PO','IBPS PO','UGC NET','CTET','Other exam'],skills:['Self-paced']};
 const KINDS=['practice','sectional','full','pyq','sample'],EXAM_LEVEL=['full','pyq','sample'],DIFFICULTIES=['easy','moderate','hard'];
 const wrap=fn=>(req,res,next)=>Promise.resolve(fn(req,res,next)).catch(next);

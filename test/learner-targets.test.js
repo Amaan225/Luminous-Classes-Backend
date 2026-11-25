@@ -8,6 +8,7 @@ test('exam targets include MTS, GD and IBPS PO and still reject unknown targets'
 test('UGC NET and CTET subjects are accepted',()=>{
   assert.deepEqual(quizData({...base,targets:['UGC NET'],subjects:['Teaching and Research Aptitude']}).subjects,['Teaching and Research Aptitude']);
   assert.deepEqual(quizData({...base,targets:['CTET'],subjects:['Child Development and Pedagogy']}).subjects,['Child Development and Pedagogy']);
+  assert.deepEqual(quizData({...base,targets:['CTET'],subjects:['Environmental Studies']}).subjects,['Environmental Studies']);
 });
 test('negative marks accept exact one third but still reject other long decimals',()=>{
   assert.equal(quizData({...base,marks:1,negativeMarks:1/3,targets:['RRB NTPC']}).negativeMarks,1/3);
