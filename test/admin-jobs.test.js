@@ -20,3 +20,5 @@ test('search, status and unlock filters with facet counts',async()=>{const s=awa
  const u=await get('?unlock=unlocked');assert.equal(u.total,1);assert.equal(u.counts.status.all,1);const l=await get('?unlock=locked');assert.equal(l.total,23);
  const both=await get('?status=hidden&unlock=unlocked');assert.equal(both.total,0)});
 test('pending Unlock does not count as unlocked',async()=>{const r=await get('?q=TK-111');assert.equal(r.items[0].approvedUnlocks.length,0)});
+
+test('view=pending returns only pending leads',async()=>{const r=await get('?view=pending');assert.equal(r.items.length,1);assert.equal(r.items[0].displayId,'TK-124')});

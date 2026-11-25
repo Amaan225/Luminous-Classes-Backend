@@ -20,8 +20,9 @@ function createAdminJobsRouter(){
  const r=express.Router();
  r.get('/',async(req,res)=>{
   try{
-   const {page,limit,status,unlock,search}=parse(req.query);
    res.set('Cache-Control','no-store');
+   if(req.query.view==='pending'){const items=await Job.find({status:'pending'}).sort({createdAt:-1,_id:-1}).limit(200).lean();return res.status(200).json({items,total:items.length})}
+   const {page,limit,status,unlock,search}=parse(req.query);
    // Jobs with at least one Approved unlock. The unlock collection is small and indexed by job, so this stays one cheap distinct query.
    const unlockedIds=(await UnlockRequest.distinct('jobId',{status:'Approved'})).map(String);
    const base={$and:[LEDGER,searchClause(search)]};
