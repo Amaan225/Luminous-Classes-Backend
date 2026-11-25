@@ -43,7 +43,9 @@ app.post('/api/admin/login', adminAuth.loginLimiter, adminAuth.login);
 app.post('/api/admin/logout', adminAuth.requireAdmin, adminAuth.logout);
 app.use('/api/admin', adminAuth.requireAdmin);
 app.get('/api/admin/session', (req, res) => res.json({ expiresAt: req.adminSession.expiry }));
-const learnerRouters=require('./learner-routes').createLearnerRouters();
+const learnerLoginRequired=process.env.LEARNER_LOGIN_REQUIRED==='true';
+if(learnerLoginRequired&&process.env.TUTOR_ACCOUNTS_ENABLED!=='true')throw new Error('LEARNER_LOGIN_REQUIRED needs TUTOR_ACCOUNTS_ENABLED.');
+const learnerRouters=require('./learner-routes').createLearnerRouters({loginRequired:learnerLoginRequired});
 app.use('/api/admin/learner',learnerRouters.adminRouter);
 app.use('/api/learn',learnerRouters.publicRouter);
 
@@ -66,6 +68,7 @@ if (process.env.TUTOR_ACCOUNTS_ENABLED === 'true') {
   const {createAlertDrainRouter,configuredAlertService}=require('./tutor-alert-drain');
   app.use('/api/internal/tutor-alert-drain',createAlertDrainRouter({service:configuredAlertService()}));
   app.use('/api/admin/tutor-accounts', createTutorAccountAdminRouter());
+  app.use('/api/learn/me', require('./learner-account-routes').createLearnerAccountRouter());
 }
 app.use((req, res, next) => {
   if (process.env.TUTOR_LEGACY_CHECKOUT_DISABLED === 'true' && process.env.TUTOR_ACCOUNTS_LIVE === 'true' && req.method === 'POST' &&
