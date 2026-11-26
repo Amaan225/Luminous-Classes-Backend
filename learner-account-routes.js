@@ -7,6 +7,9 @@ const IST=ms=>new Date(ms+19800000).toISOString().slice(0,10);
 const wrap=fn=>(req,res,next)=>Promise.resolve(fn(req,res,next)).catch(()=>res.status(500).json({error:'Could not complete this request. Please retry.'}));
 function grade(q,answers){let correct=0,wrong=0,skipped=0;const sec=new Map();q.questions.forEach((x,i)=>{const a=answers[i];const attempted=Number.isInteger(a)&&a>=0&&a<x.options.length;const name=x.section||'';const s=sec.get(name)||{name,correct:0,attempted:0,total:0};s.total++;if(attempted){s.attempted++;if(a===x.answer){correct++;s.correct++}else wrong++}else skipped++;sec.set(name,s)});
  const marks=q.marks||1,neg=q.negativeMarks||0;return {correct,wrong,skipped,total:q.questions.length,score:Math.round((correct*marks-wrong*neg)*100)/100,maxScore:q.questions.length*marks,sections:[...sec.values()]}}
+function bounds(qs){const b=[];qs.forEach((q,i)=>{const n=q.section||'';if(!b.length||b[b.length-1].name!==n)b.push({name:n,from:i,to:i+1});else b[b.length-1].to=i+1});return b}
+// Sectioned attempts: section i runs from the previous section's end (or its early finish) for at most sectionMinutes. Everything is derived from server timestamps.
+function secState(at,now){if(!at.sectionMinutes||!at.sectionBounds?.length)return null;const len=at.sectionMinutes*60000,starts=[],ends=[];let st=+at.startedAt;at.sectionBounds.forEach((_,i)=>{const lk=at.sectionLockedAt?.[i];const en=Math.min(st+len,lk?Math.max(+lk,st):Infinity);starts.push(st);ends.push(en);st=en});let cur=ends.findIndex(e=>e>now);if(cur<0)cur=ends.length;return {starts,ends,cur}}
 function createLearnerAccountRouter({accountModels=require('./models/tutor-account'),learnerModels=require('./models/learner'),models=require('./models/learner-account'),config={}}={}){
  const {Account,Session}=accountModels;const {Quiz,Note}=learnerModels;const {Profile,Attempt,NoteOpen}=models;const r=express.Router();
  const enabled=config.enabled??process.env.TUTOR_ACCOUNTS_ENABLED==='true';
@@ -34,16 +37,29 @@ function createLearnerAccountRouter({accountModels=require('./models/tutor-accou
   const now=Date.now();let at=await Attempt.findOne({accountId:req.acct._id,quizId:quiz._id,status:'in-progress',expiresAt:{$gt:new Date(now)}}).select('+questions');
   if(!at){await Attempt.updateMany({accountId:req.acct._id,quizId:quiz._id,status:'in-progress',expiresAt:{$lte:new Date(now)}},{$set:{status:'expired'}});
    if(MAX_ATTEMPTS&&await Attempt.countDocuments({accountId:req.acct._id})>=MAX_ATTEMPTS)return res.status(409).json({error:'Attempt history is full.'});
-   at=await Attempt.create({accountId:req.acct._id,quizId:quiz._id,title:quiz.title,kind:quiz.kind,marks:quiz.marks,negativeMarks:quiz.negativeMarks,minutes:quiz.minutes,questions:quiz.questions.map(q=>q.toObject?q.toObject():q),startedAt:new Date(now),expiresAt:new Date(now+quiz.minutes*60000)})}
-  const f=await figures(at);res.status(201).json({attemptId:String(at._id),title:at.title,minutes:at.minutes,marks:at.marks,negativeMarks:at.negativeMarks,startedAt:at.startedAt,expiresAt:at.expiresAt,secondsLeft:Math.max(0,Math.round((at.expiresAt-now)/1000)),
+   at=await Attempt.create({accountId:req.acct._id,quizId:quiz._id,title:quiz.title,kind:quiz.kind,marks:quiz.marks,negativeMarks:quiz.negativeMarks,minutes:quiz.minutes,questions:quiz.questions.map(q=>q.toObject?q.toObject():q),...(quiz.sectionMinutes>0?{sectionMinutes:quiz.sectionMinutes,sectionBounds:bounds(quiz.questions),sectionLockedAt:bounds(quiz.questions).map(()=>null),sectionAnswers:[]}:{}),startedAt:new Date(now),expiresAt:new Date(now+quiz.minutes*60000)})}
+  const f=await figures(at);res.status(201).json({attemptId:String(at._id),title:at.title,minutes:at.minutes,marks:at.marks,negativeMarks:at.negativeMarks,startedAt:at.startedAt,expiresAt:at.expiresAt,secondsLeft:Math.max(0,Math.round((at.expiresAt-now)/1000)),...(()=>{const st=secState(at,now);return st?{sectionMinutes:at.sectionMinutes,sections:at.sectionBounds.map((b,i)=>({name:b.name,from:b.from,to:b.to,startsAt:new Date(st.starts[i]),endsAt:new Date(st.ends[i]),saved:at.sectionAnswers?.[i]||null})),currentSection:st.cur}:{}})(),
    questions:at.questions.map((q,i)=>({text:q.text,options:q.options,section:q.section||'',...(f[i]?{image:f[i]}:{})}))})}));
+ r.post('/attempts/:id/section',wrap(async(req,res)=>{if(!idOK(req.params.id))return res.status(404).end();
+  const at=await Attempt.findOne({_id:req.params.id,accountId:req.acct._id,status:'in-progress'});if(!at||!at.sectionMinutes)return res.status(404).end();
+  const now=Date.now(),st=secState(at,now),i=req.body?.section,a=req.body?.answers,fin=req.body?.finish===true;
+  if(!Number.isInteger(i)||i<0||i>=at.sectionBounds.length||!Array.isArray(a))return res.status(400).json({error:'Invalid section.'});
+  const b=at.sectionBounds[i];if(a.length!==b.to-b.from||a.some(v=>v!==null&&!(Number.isInteger(v)&&v>=0&&v<4)))return res.status(400).json({error:'Invalid answers.'});
+  if(at.sectionLockedAt?.[i])return res.status(409).json({error:'This section is finished.',locked:true});
+  if(now>at.expiresAt.getTime()+GRACE_MS||now>st.ends[i]+GRACE_MS||st.cur<i)return res.status(409).json({error:'This section is closed.',locked:true});
+  if(fin&&st.cur!==i)return res.status(409).json({error:'This section is closed.',locked:true});
+  const set={['sectionAnswers.'+i]:a};if(fin)set['sectionLockedAt.'+i]=new Date(now);
+  const ok=await Attempt.updateOne({_id:at._id,status:'in-progress',['sectionLockedAt.'+i]:null},{$set:set});if(!ok.matchedCount)return res.status(409).json({error:'This section is finished.',locked:true});
+  const st2=secState({...at.toObject(),sectionLockedAt:Object.assign([...(at.sectionLockedAt||[])],fin?{[i]:new Date(now)}:{}),sectionAnswers:at.sectionAnswers},now);
+  res.json({ok:true,currentSection:st2.cur,sections:at.sectionBounds.map((_,k)=>({startsAt:new Date(st2.starts[k]),endsAt:new Date(st2.ends[k])}))})}));
  r.post('/attempts/:id/submit',wrap(async(req,res)=>{if(!idOK(req.params.id))return res.status(404).end();
   const at=await Attempt.findOne({_id:req.params.id,accountId:req.acct._id}).select('+questions');if(!at)return res.status(404).end();
   if(at.status==='submitted')return res.status(409).json({error:'Already submitted.'});
   const now=Date.now();if(now>at.expiresAt.getTime()+GRACE_MS){await Attempt.updateOne({_id:at._id,status:'in-progress'},{$set:{status:'expired'}});return res.status(409).json({error:'Time is up. This attempt was not saved.'})}
   const a=req.body?.answers;if(!Array.isArray(a)||a.length>at.questions.length||a.some(v=>v!==null&&!Number.isInteger(v)))return res.status(400).json({error:'Invalid answers.'});
-  const g=grade(at,a);const seconds=Math.min(Math.round((now-at.startedAt)/1000),at.minutes*60);
-  const done=await Attempt.findOneAndUpdate({_id:at._id,status:'in-progress'},{$set:{status:'submitted',submittedAt:new Date(now),answers:a.map(v=>v===null?-1:v),...g,seconds}},{new:true});
+  let fin=a;{const st=secState(at,now);if(st){fin=Array(at.questions.length).fill(null);at.sectionBounds.forEach((b,i)=>{const open=i===st.cur||(i===at.sectionBounds.length-1&&st.cur>=at.sectionBounds.length&&!at.sectionLockedAt?.[i]);const src=open?a.slice(b.from,b.to):(at.sectionAnswers?.[i]||[]);for(let k=b.from;k<b.to;k++){const v=src[open?k-b.from:k-b.from];fin[k]=Number.isInteger(v)?v:null}})}}
+  const g=grade(at,fin);const seconds=Math.min(Math.round((now-at.startedAt)/1000),at.minutes*60);
+  const done=await Attempt.findOneAndUpdate({_id:at._id,status:'in-progress'},{$set:{status:'submitted',submittedAt:new Date(now),answers:fin.map(v=>v===null?-1:v),...g,seconds}},{new:true});
   if(!done)return res.status(409).json({error:'Already submitted.'});res.json({...reviewOf(at,done,await figures(at)),rank:await rankFor(Attempt,{...at.toObject(),_id:done._id,accountId:done.accountId,quizId:done.quizId})})}));
  // Figures live on the quiz once. An attempt keeps the alt marker and gets the picture only while the quiz still has the same figure.
  const figures=async at=>{if(!at.questions.some(q=>q.image?.alt))return[];const live=await Quiz.findById(at.quizId).select('questions.image');return at.questions.map((q,i)=>{const li=live?.questions?.[i]?.image;return q.image?.alt&&li&&li.alt===q.image.alt?{src:li.src,alt:li.alt}:undefined})};

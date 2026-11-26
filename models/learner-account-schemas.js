@@ -4,6 +4,7 @@ const profile=new Schema({accountId:{type:Schema.Types.ObjectId,required:true,un
 const question=new Schema({text:String,options:[String],answer:Number,explanation:String,section:String,image:{alt:String}},{_id:false}) // figure bytes are not copied into attempts; only the alt marker;
 const attempt=new Schema({
  accountId:{type:Schema.Types.ObjectId,required:true,index:true},quizId:{type:Schema.Types.ObjectId,required:true},
+ sectionMinutes:{type:Number,default:0},sectionBounds:{type:[new Schema({name:String,from:Number,to:Number},{_id:false})],default:undefined},sectionLockedAt:{type:[Date],default:undefined},sectionAnswers:{type:[Schema.Types.Mixed],default:undefined},
  title:String,kind:String,marks:Number,negativeMarks:Number,minutes:Number,
  questions:{type:[question],select:false}, // snapshot taken at start; grading and review never read the live quiz
  startedAt:{type:Date,required:true},expiresAt:{type:Date,required:true},submittedAt:Date,
