@@ -10,6 +10,8 @@ function grade(q,answers){let correct=0,wrong=0,skipped=0;const sec=new Map();q.
 function bounds(qs){const b=[];qs.forEach((q,i)=>{const n=q.section||'';if(!b.length||b[b.length-1].name!==n)b.push({name:n,from:i,to:i+1});else b[b.length-1].to=i+1});return b}
 // Sectioned attempts: section i runs from the previous section's end (or its early finish) for at most sectionMinutes. Everything is derived from server timestamps.
 function secState(at,now){if(!at.sectionMinutes||!at.sectionBounds?.length)return null;const len=at.sectionMinutes*60000,starts=[],ends=[];let st=+at.startedAt;at.sectionBounds.forEach((_,i)=>{const lk=at.sectionLockedAt?.[i];const en=Math.min(st+len,lk?Math.max(+lk,st):Infinity);starts.push(st);ends.push(en);st=en});let cur=ends.findIndex(e=>e>now);if(cur<0)cur=ends.length;return {starts,ends,cur}}
+const SECTION_GRACE_MS=5000;
+function secPayload(at,now){const st=secState(at,now);if(!st)return {};return {sectionMinutes:at.sectionMinutes,currentSection:st.cur,expiresAt:at.expiresAt,secondsLeft:Math.max(0,Math.round((at.expiresAt-now)/1000)),sections:at.sectionBounds.map((b,i)=>({name:b.name,from:b.from,to:b.to,startsAt:new Date(st.starts[i]),endsAt:new Date(st.ends[i]),finished:!!at.sectionLockedAt?.[i]||st.ends[i]<=now,saved:at.sectionAnswers?.[i]||null}))}}
 function createLearnerAccountRouter({accountModels=require('./models/tutor-account'),learnerModels=require('./models/learner'),models=require('./models/learner-account'),config={}}={}){
  const {Account,Session}=accountModels;const {Quiz,Note}=learnerModels;const {Profile,Attempt,NoteOpen}=models;const r=express.Router();
  const enabled=config.enabled??process.env.TUTOR_ACCOUNTS_ENABLED==='true';
@@ -38,20 +40,24 @@ function createLearnerAccountRouter({accountModels=require('./models/tutor-accou
   if(!at){await Attempt.updateMany({accountId:req.acct._id,quizId:quiz._id,status:'in-progress',expiresAt:{$lte:new Date(now)}},{$set:{status:'expired'}});
    if(MAX_ATTEMPTS&&await Attempt.countDocuments({accountId:req.acct._id})>=MAX_ATTEMPTS)return res.status(409).json({error:'Attempt history is full.'});
    at=await Attempt.create({accountId:req.acct._id,quizId:quiz._id,title:quiz.title,kind:quiz.kind,marks:quiz.marks,negativeMarks:quiz.negativeMarks,minutes:quiz.minutes,questions:quiz.questions.map(q=>q.toObject?q.toObject():q),...(quiz.sectionMinutes>0?{sectionMinutes:quiz.sectionMinutes,sectionBounds:bounds(quiz.questions),sectionLockedAt:bounds(quiz.questions).map(()=>null),sectionAnswers:[]}:{}),startedAt:new Date(now),expiresAt:new Date(now+quiz.minutes*60000)})}
-  const f=await figures(at);res.status(201).json({attemptId:String(at._id),title:at.title,minutes:at.minutes,marks:at.marks,negativeMarks:at.negativeMarks,startedAt:at.startedAt,expiresAt:at.expiresAt,secondsLeft:Math.max(0,Math.round((at.expiresAt-now)/1000)),...(()=>{const st=secState(at,now);return st?{sectionMinutes:at.sectionMinutes,sections:at.sectionBounds.map((b,i)=>({name:b.name,from:b.from,to:b.to,startsAt:new Date(st.starts[i]),endsAt:new Date(st.ends[i]),saved:at.sectionAnswers?.[i]||null})),currentSection:st.cur}:{}})(),
+  const f=await figures(at);res.status(201).json({attemptId:String(at._id),title:at.title,minutes:at.minutes,marks:at.marks,negativeMarks:at.negativeMarks,startedAt:at.startedAt,expiresAt:at.expiresAt,secondsLeft:Math.max(0,Math.round((at.expiresAt-now)/1000)),...secPayload(at,now),
    questions:at.questions.map((q,i)=>({text:q.text,options:q.options,section:q.section||'',...(f[i]?{image:f[i]}:{})}))})}));
+ r.get('/attempts/:id/state',wrap(async(req,res)=>{if(!idOK(req.params.id))return res.status(404).end();
+  const at=await Attempt.findOne({_id:req.params.id,accountId:req.acct._id});if(!at||!at.sectionMinutes)return res.status(404).end();
+  const now=Date.now();res.json({status:at.status,...(at.status==='in-progress'&&now<=at.expiresAt.getTime()+GRACE_MS?secPayload(at,now):{}),serverNow:now})}));
  r.post('/attempts/:id/section',wrap(async(req,res)=>{if(!idOK(req.params.id))return res.status(404).end();
   const at=await Attempt.findOne({_id:req.params.id,accountId:req.acct._id,status:'in-progress'});if(!at||!at.sectionMinutes)return res.status(404).end();
   const now=Date.now(),st=secState(at,now),i=req.body?.section,a=req.body?.answers,fin=req.body?.finish===true;
   if(!Number.isInteger(i)||i<0||i>=at.sectionBounds.length||!Array.isArray(a))return res.status(400).json({error:'Invalid section.'});
   const b=at.sectionBounds[i];if(a.length!==b.to-b.from||a.some(v=>v!==null&&!(Number.isInteger(v)&&v>=0&&v<4)))return res.status(400).json({error:'Invalid answers.'});
-  if(at.sectionLockedAt?.[i])return res.status(409).json({error:'This section is finished.',locked:true});
-  if(now>at.expiresAt.getTime()+GRACE_MS||now>st.ends[i]+GRACE_MS||st.cur<i)return res.status(409).json({error:'This section is closed.',locked:true});
-  if(fin&&st.cur!==i)return res.status(409).json({error:'This section is closed.',locked:true});
+  // A section that was already finished is immutable. Repeating a finish is idempotent (a lost response can be retried); it never rewrites saved answers.
+  if(at.sectionLockedAt?.[i]){return res.status(fin?200:409).json({ok:fin,locked:true,error:fin?undefined:'This section is finished.',...secPayload(at,now)})}
+  if(now>at.expiresAt.getTime()+GRACE_MS||now>st.ends[i]+SECTION_GRACE_MS||st.cur<i)return res.status(409).json({error:'This section is closed.',locked:true,...secPayload(at,now)});
+  if(fin&&(st.cur!==i||i===at.sectionBounds.length-1))return res.status(409).json({error:'This section is closed.',locked:true,...secPayload(at,now)});
   const set={['sectionAnswers.'+i]:a};if(fin)set['sectionLockedAt.'+i]=new Date(now);
-  const ok=await Attempt.updateOne({_id:at._id,status:'in-progress',['sectionLockedAt.'+i]:null},{$set:set});if(!ok.matchedCount)return res.status(409).json({error:'This section is finished.',locked:true});
-  const st2=secState({...at.toObject(),sectionLockedAt:Object.assign([...(at.sectionLockedAt||[])],fin?{[i]:new Date(now)}:{}),sectionAnswers:at.sectionAnswers},now);
-  res.json({ok:true,currentSection:st2.cur,sections:at.sectionBounds.map((_,k)=>({startsAt:new Date(st2.starts[k]),endsAt:new Date(st2.ends[k])}))})}));
+  const ok=await Attempt.updateOne({_id:at._id,status:'in-progress',['sectionLockedAt.'+i]:null},{$set:set});
+  const fresh=await Attempt.findById(at._id);if(!ok.matchedCount)return res.status(fin?200:409).json({ok:fin,locked:true,...secPayload(fresh,now)});
+  res.json({ok:true,...secPayload(fresh,now)})}));
  r.post('/attempts/:id/submit',wrap(async(req,res)=>{if(!idOK(req.params.id))return res.status(404).end();
   const at=await Attempt.findOne({_id:req.params.id,accountId:req.acct._id}).select('+questions');if(!at)return res.status(404).end();
   if(at.status==='submitted')return res.status(409).json({error:'Already submitted.'});

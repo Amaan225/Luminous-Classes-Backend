@@ -55,3 +55,14 @@ test('sectioned: unsaved answers in a timed-out section are not counted, last se
  await back(st.attemptId,65000);await back(st.attemptId,125000);
  const d=await (await submit(s,st.attemptId,[1,1,1,1])).json();assert.equal(d.correct,2,'section 0 unsaved (0 counted), last section final answers accepted within grace');});
 test('sectioned: submit after expiry plus grace is refused as before',async()=>{const s=await login('s5');const q=await mk(1);const st=await start(s,q);await back(st.attemptId,200000);assert.equal((await submit(s,st.attemptId,[1,1,1,1])).status,409);});
+test('lost finish response: retry is idempotent, state endpoint is authoritative, saved answers never rewritten',async()=>{const s=await login('s6');const q=await mk(1);const st=await start(s,q);
+ await save(s,st.attemptId,0,[1,0]);const f1=await (await save(s,st.attemptId,0,[1,1],true)).json();assert.equal(f1.currentSection,1);
+ const f2=await save(s,st.attemptId,0,[0,0],true);assert.equal(f2.status,200,'repeated finish (lost response retry) succeeds');const j2=await f2.json();assert.equal(j2.currentSection,1);assert.deepEqual(j2.sections[0].saved,[1,1],'retry cannot rewrite finished answers');
+ const p=await save(s,st.attemptId,0,[0,0]);assert.equal(p.status,409);assert.deepEqual((await p.json()).sections[0].saved,[1,1]);
+ const state=await (await me(s,`/attempts/${st.attemptId}/state`)).json();assert.equal(state.currentSection,1);assert.deepEqual(state.sections[0].saved,[1,1]);assert.equal(state.sections[0].finished,true);assert.equal(state.sections[1].finished,false);assert.ok(state.secondsLeft>0&&state.secondsLeft<=120);
+ assert.equal((await save(s,st.attemptId,1,[1,1],true)).status,409,'cannot finish the last section by checkpoint');});
+test('late checkpoint after a section end is limited to a 5 s network allowance',async()=>{const s=await login('s7');const q=await mk(1);const st=await start(s,q);await save(s,st.attemptId,0,[1,1]);
+ await back(st.attemptId,70000);const r=await save(s,st.attemptId,0,[0,0]);assert.equal(r.status,409);const j=await r.json();assert.deepEqual(j.sections[0].saved,[1,1]);assert.equal(j.currentSection,1);
+ const state=await (await me(s,`/attempts/${st.attemptId}/state`)).json();assert.deepEqual(state.sections[0].saved,[1,1]);});
+test('state endpoint is 404 for legacy attempts and submit cannot be repeated',async()=>{const s=await login('s8');const q0=await mk(0);const a0=await start(s,q0);assert.equal((await me(s,`/attempts/${a0.attemptId}/state`)).status,404);
+ const q=await mk(1);const st=await start(s,q);assert.equal((await submit(s,st.attemptId,[1,1,1,1])).status,200);assert.equal((await submit(s,st.attemptId,[1,1,1,1])).status,409);});
