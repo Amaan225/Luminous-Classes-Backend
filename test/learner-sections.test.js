@@ -66,3 +66,7 @@ test('a checkpoint received after the section end never changes it, even one sec
  const state=await (await me(s,`/attempts/${st.attemptId}/state`)).json();assert.deepEqual(state.sections[0].saved,[1,1]);});
 test('state endpoint is 404 for legacy attempts and submit cannot be repeated',async()=>{const s=await login('s8');const q0=await mk(0);const a0=await start(s,q0);assert.equal((await me(s,`/attempts/${a0.attemptId}/state`)).status,404);
  const q=await mk(1);const st=await start(s,q);assert.equal((await submit(s,st.attemptId,[1,1,1,1])).status,200);assert.equal((await submit(s,st.attemptId,[1,1,1,1])).status,409);});
+test('saved attempt detail carries the marks and negative marks it was graded with (even with zero wrong answers)',async()=>{const s=await login('s9');const q=await mk(0);const st=await start(s,q);
+ const d=await (await submit(s,st.attemptId,[1,null,null,null])).json();assert.equal(d.correct,1);assert.equal(d.wrong,0);assert.equal(d.score,2);
+ const r=await (await me(s,'/attempts/'+st.attemptId)).json();assert.equal(r.marks,2);assert.equal(r.negativeMarks,0.5);assert.equal(r.wrong,0);
+ const d2=await start(s,q);const g=await (await submit(s,d2.attemptId,[0,null,null,null])).json();assert.equal(g.wrong,1);assert.equal(g.score,-0.5);});
