@@ -5,7 +5,7 @@ const crypto=require('crypto');
 const EXCLUDED_ACCOUNT_IDS=new Set(['6b0188b4203e838f44d9ec66','6afd7065dba5129714214d09','6afd6b5ddba5129714214cfe','6afd5a57050714600db27d86']);
 const COHORT_CAP=1000,SMALL_COHORT=10;
 const fingerprint=q=>{if(!q||!Array.isArray(q.questions)||!q.questions.length)return null;
- return crypto.createHash('sha256').update(JSON.stringify({m:q.marks,n:q.negativeMarks,t:q.minutes,q:q.questions.map(x=>[x.text,x.options,x.answer,x.section||''])})).digest('hex')};
+ return crypto.createHash('sha256').update(JSON.stringify({m:q.marks,n:q.negativeMarks,...(q.sectionNegativeMarks?.length?{sn:q.sectionNegativeMarks}:{}),t:q.minutes,q:q.questions.map(x=>[x.text,x.options,x.answer,x.section||''])})).digest('hex')};
 // rows: submitted attempts of one quiz with questions snapshot. Returns the rank view for `acctId`.
 function computeRank(rows,acctId,fp,excluded=EXCLUDED_ACCOUNT_IDS,attemptId=null){
  const me=String(acctId);if(excluded.has(me))return {available:false,reason:'not-ranked'};
@@ -18,7 +18,7 @@ function computeRank(rows,acctId,fp,excluded=EXCLUDED_ACCOUNT_IDS,attemptId=null
  return {available:true,rank,participants:N,percentile:N>1?Math.round(100*lower/(N-1)*10)/10:null,firstScore:s,isFirstAttempt:attemptId==null||String(mine._id)===String(attemptId),smallCohort:N<SMALL_COHORT,basis:'first eligible attempt by each learner on this exact version of the test'}}
 async function rankFor(Attempt,attempt){
  try{const fp=fingerprint(attempt);if(!fp)return {available:false,reason:'no-snapshot'};
-  const rows=await Attempt.find({quizId:attempt.quizId,status:'submitted'}).select('+questions accountId submittedAt score marks negativeMarks minutes').sort({submittedAt:1}).limit(COHORT_CAP+1).lean();
+  const rows=await Attempt.find({quizId:attempt.quizId,status:'submitted'}).select('+questions accountId submittedAt score marks negativeMarks sectionNegativeMarks minutes').sort({submittedAt:1}).limit(COHORT_CAP+1).lean();
   if(rows.length>COHORT_CAP)return {available:false,reason:'cohort-too-large'};
   return computeRank(rows,attempt.accountId,fp,EXCLUDED_ACCOUNT_IDS,attempt._id)}catch{return {available:false,reason:'unavailable'}}}
 module.exports={computeRank,rankFor,fingerprint,EXCLUDED_ACCOUNT_IDS,COHORT_CAP,SMALL_COHORT};
