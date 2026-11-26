@@ -10,7 +10,8 @@ function grade(q,answers){let correct=0,wrong=0,skipped=0;const sec=new Map();q.
 function bounds(qs){const b=[];qs.forEach((q,i)=>{const n=q.section||'';if(!b.length||b[b.length-1].name!==n)b.push({name:n,from:i,to:i+1});else b[b.length-1].to=i+1});return b}
 // Sectioned attempts: section i runs from the previous section's end (or its early finish) for at most sectionMinutes. Everything is derived from server timestamps.
 function secState(at,now){if(!at.sectionMinutes||!at.sectionBounds?.length)return null;const len=at.sectionMinutes*60000,starts=[],ends=[];let st=+at.startedAt;at.sectionBounds.forEach((_,i)=>{const lk=at.sectionLockedAt?.[i];const en=Math.min(st+len,lk?Math.max(+lk,st):Infinity);starts.push(st);ends.push(en);st=en});let cur=ends.findIndex(e=>e>now);if(cur<0)cur=ends.length;return {starts,ends,cur}}
-const SECTION_GRACE_MS=5000;
+// Section snapshot semantics: a section's answers are the last checkpoint the server RECEIVED at or before the section end (server clock). No allowance after the end, so a section is immutable the moment the next one starts.
+const SECTION_GRACE_MS=0;
 function secPayload(at,now){const st=secState(at,now);if(!st)return {};return {sectionMinutes:at.sectionMinutes,currentSection:st.cur,expiresAt:at.expiresAt,secondsLeft:Math.max(0,Math.round((at.expiresAt-now)/1000)),sections:at.sectionBounds.map((b,i)=>({name:b.name,from:b.from,to:b.to,startsAt:new Date(st.starts[i]),endsAt:new Date(st.ends[i]),finished:!!at.sectionLockedAt?.[i]||st.ends[i]<=now,locked:!!at.sectionLockedAt?.[i],saved:at.sectionAnswers?.[i]||null}))}}
 function createLearnerAccountRouter({accountModels=require('./models/tutor-account'),learnerModels=require('./models/learner'),models=require('./models/learner-account'),config={}}={}){
  const {Account,Session}=accountModels;const {Quiz,Note}=learnerModels;const {Profile,Attempt,NoteOpen}=models;const r=express.Router();

@@ -47,9 +47,9 @@ test('sectioned: start shape, checkpoint, early finish locks, locked answers ign
 test('sectioned: timeout locks a section server-side, only checkpointed answers survive',async()=>{const s=await login('s3');const q=await mk(1);const st=await start(s,q);
  await save(s,st.attemptId,0,[1,null]);await back(st.attemptId,61000);
  const re=await start(s,q);assert.equal(re.currentSection,1);
- assert.equal((await save(s,st.attemptId,0,[1,1])).status,200,'late checkpoint within the 30 s grace of the section end is still accepted');
+ assert.equal((await save(s,st.attemptId,0,[1,1])).status,409,'a checkpoint received after the section end is refused: the section is immutable once the next one starts');
  await back(st.attemptId,100000);assert.equal((await save(s,st.attemptId,0,[1,1])).status,409,'after grace the section is closed');
- const d=await (await submit(s,st.attemptId,[3,3,1,3])).json();assert.equal(d.correct,3,'section 0 from last accepted checkpoint [1,1] plus 1 right in section 1; body edits to section 0 ignored');
+ const d=await (await submit(s,st.attemptId,[3,3,1,3])).json();assert.equal(d.correct,2,'section 0 from last accepted checkpoint [1,null] plus 1 right in section 1; body edits to section 0 ignored');
 });
 test('sectioned: unsaved answers in a timed-out section are not counted, last section accepts final submit within grace',async()=>{const s=await login('s4');const q=await mk(1);const st=await start(s,q);
  await back(st.attemptId,65000);await back(st.attemptId,125000);
@@ -61,8 +61,8 @@ test('lost finish response: retry is idempotent, state endpoint is authoritative
  const p=await save(s,st.attemptId,0,[0,0]);assert.equal(p.status,409);assert.deepEqual((await p.json()).sections[0].saved,[1,1]);
  const state=await (await me(s,`/attempts/${st.attemptId}/state`)).json();assert.equal(state.currentSection,1);assert.deepEqual(state.sections[0].saved,[1,1]);assert.equal(state.sections[0].finished,true);assert.equal(state.sections[1].finished,false);assert.ok(state.secondsLeft>0&&state.secondsLeft<=120);
  assert.equal((await save(s,st.attemptId,1,[1,1],true)).status,409,'cannot finish the last section by checkpoint');});
-test('late checkpoint after a section end is limited to a 5 s network allowance',async()=>{const s=await login('s7');const q=await mk(1);const st=await start(s,q);await save(s,st.attemptId,0,[1,1]);
- await back(st.attemptId,70000);const r=await save(s,st.attemptId,0,[0,0]);assert.equal(r.status,409);const j=await r.json();assert.deepEqual(j.sections[0].saved,[1,1]);assert.equal(j.currentSection,1);
+test('a checkpoint received after the section end never changes it, even one second late',async()=>{const s=await login('s7');const q=await mk(1);const st=await start(s,q);await save(s,st.attemptId,0,[1,1]);
+ await back(st.attemptId,61000);const r=await save(s,st.attemptId,0,[0,0]);assert.equal(r.status,409);const j=await r.json();assert.deepEqual(j.sections[0].saved,[1,1]);assert.equal(j.currentSection,1);
  const state=await (await me(s,`/attempts/${st.attemptId}/state`)).json();assert.deepEqual(state.sections[0].saved,[1,1]);});
 test('state endpoint is 404 for legacy attempts and submit cannot be repeated',async()=>{const s=await login('s8');const q0=await mk(0);const a0=await start(s,q0);assert.equal((await me(s,`/attempts/${a0.attemptId}/state`)).status,404);
  const q=await mk(1);const st=await start(s,q);assert.equal((await submit(s,st.attemptId,[1,1,1,1])).status,200);assert.equal((await submit(s,st.attemptId,[1,1,1,1])).status,409);});
