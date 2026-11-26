@@ -5,7 +5,7 @@ const question=new Schema({text:String,options:[String],answer:Number,explanatio
 const attempt=new Schema({
  accountId:{type:Schema.Types.ObjectId,required:true,index:true},quizId:{type:Schema.Types.ObjectId,required:true},
  sectionMinutes:{type:Number,default:0},sectionBounds:{type:[new Schema({name:String,from:Number,to:Number},{_id:false})],default:undefined},sectionLockedAt:{type:[Date],default:undefined},sectionAnswers:{type:[Schema.Types.Mixed],default:undefined},
- title:String,kind:String,marks:Number,negativeMarks:Number,sectionNegativeMarks:{type:[Number],default:undefined},minutes:Number,
+ title:String,kind:String,marks:Number,negativeMarks:Number,sectionNegativeMarks:{type:[Number],default:undefined},sectionMarks:{type:[Number],default:undefined},negativeRatio:{type:Number,min:0,max:1},minutes:Number,
  questions:{type:[question],select:false}, // snapshot taken at start; grading and review never read the live quiz
  startedAt:{type:Date,required:true},expiresAt:{type:Date,required:true},submittedAt:Date,
  status:{type:String,enum:['in-progress','submitted','expired'],default:'in-progress'},
