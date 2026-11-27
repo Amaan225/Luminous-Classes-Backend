@@ -82,12 +82,15 @@ test('public jobs stay masked, old query cannot enable admin reads, parent posts
   const Job=require('../models/jobmodel');
   const find=Job.find, save=Job.prototype.save;
   let filter, saved;
-  Job.find=query=>{filter=query;return {sort:async()=>[{contactNumber:'9999999999',status:'approved'}]}};
+  Job.find=query=>{filter=query;return {sort:async()=>[{parentName:'Private Parent',contactNumber:'9999999999',status:'approved',subject:'Maths',location:'Area'}]}};
   Job.prototype.save=async function(){saved=this;return this};
   try {
     const res=await request('/api/jobs?secret=obsolete-public-bypass');
     assert.equal(res.status,200);
-    assert.equal((await res.json())[0].contactNumber,'+91 XXXXX XXXXX');
+    const body=(await res.json())[0];
+    assert.equal(body.contactNumber,'+91 XXXXX XXXXX');
+    assert.equal('parentName' in body,false);
+    assert.equal(body.subject,'Maths');assert.equal(body.location,'Area');assert.equal(body.status,'approved');
     assert.ok(filter.$or);
     const post=await request('/api/jobs?secret=obsolete-public-bypass','POST',{parentName:'Local test',contactNumber:'9999999999',subject:'Maths',grade:'5',city:'Lucknow',location:'Local test',salary:100,status:'approved',leadType:'classic'});
     assert.equal(post.status,201);
@@ -110,6 +113,24 @@ test('admin-injected lead keeps its selected category and approval', async () =>
     assert.equal(saved.status,'approved');
     assert.equal(saved.leadType,'classic');
   } finally {Job.prototype.save=original;Tutor.find=originalFind;}
+});
+test('admin session still receives parentName and unmasked contact, public does not', async () => {
+  const Job=require('../models/jobmodel');
+  const find=Job.find;
+  const {token}=await (await request('/api/admin/login','POST',{password})).json();
+  Job.find=()=>({sort:async()=>[{parentName:'Synthetic Parent',contactNumber:'9999999999',status:'pending',subject:'Maths',location:'Area'}]});
+  try {
+    const admin=await request('/api/jobs','GET',undefined,token);
+    assert.equal(admin.status,200);
+    const a=(await admin.json())[0];
+    assert.equal(a.parentName,'Synthetic Parent');
+    assert.equal(a.contactNumber,'9999999999');
+    assert.equal(a.status,'pending');
+    const pub=await request('/api/jobs');
+    const p=(await pub.json())[0];
+    assert.equal('parentName' in p,false);
+    assert.equal(p.contactNumber,'+91 XXXXX XXXXX');
+  } finally {Job.find=find;}
 });
 test('login is rate limited', async () => {
   let last;

@@ -155,6 +155,7 @@ app.get('/api/jobs', async (req, res) => {
     const maskedJobs = approvedJobs.map(job => {
       const jobObj = job.toObject ? job.toObject() : job;
       jobObj.contactNumber = "+91 XXXXX XXXXX";
+      delete jobObj.parentName;
       return jobObj;
     });
     res.status(200).json(maskedJobs);
